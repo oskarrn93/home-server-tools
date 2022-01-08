@@ -3,6 +3,7 @@ services:
   agent:
     image: portainer/agent:linux-amd64-2.11.0-alpine
     container_name: agent
+    restart: unless-stopped
     environment:
       AGENT_CLUSTER_ADDR: agent
     volumes:
