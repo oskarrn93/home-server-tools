@@ -15,10 +15,14 @@ services:
       - "--entrypoints.web_public_secure.address=:38516"
       - "--certificatesResolvers.lets_encrypt.acme.httpChallenge=true"
       - "--certificatesResolvers.lets_encrypt.acme.email=oskar@oskarrosen.com"
-      - "--certificatesResolvers.lets_encrypt.acme.storage=acme.json"
-      - "--certificatesResolvers.lets_encrypt.acme.httpChallenge.entryPoint=web_public"
+      - "--certificatesResolvers.lets_encrypt.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.lets_encrypt.acme.dnschallenge.provider=route53"
+    env_file:
+      - .env
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "~/.aws/credentials:/root/.aws/credentials:ro"
+      - "./lets_encrypt/acme.json:/letsencrypt/acme.json"
     networks:
       - default
       - traefik_internal
