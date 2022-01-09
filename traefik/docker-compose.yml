@@ -12,6 +12,7 @@ services:
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.web_public.address=:22715"
+      - "--entrypoints.web_public_secure.address=:38516"
       - "--certificatesResolvers.lets_encrypt.acme.httpChallenge=true"
       - "--certificatesResolvers.lets_encrypt.acme.email=oskar@oskarrosen.com"
       - "--certificatesResolvers.lets_encrypt.acme.storage=acme.json"
@@ -25,6 +26,7 @@ services:
       - "80:80"
       - "8080:8080"
       - "22715:22715"
+      - "38516:38516"
  
 networks:
   traefik_internal:
