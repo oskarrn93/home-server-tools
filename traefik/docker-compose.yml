@@ -11,6 +11,7 @@ services:
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
+      - "--entrypoints.web_public.address=:22715"
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
     networks:
@@ -19,8 +20,8 @@ services:
     ports:
       - "80:80"
       - "8080:8080"
+      - "22715:22715"
  
 networks:
   traefik_internal:
    external: true
-  
