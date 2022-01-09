@@ -23,6 +23,15 @@ services:
         target: /data
         volume:
           nocopy: true
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.portainer.rule=Host(`portainer.local.oskarrosen.com`)"
+      - "traefik.http.routers.portainer.entrypoints=web"
+      - "traefik.http.services.portainer.loadbalancer.server.port=9000"
+      - "traefik.docker.network=traefik_internal"
+    networks:
+      - default
+      - traefik_internal
     ports:
       - "9000:9000"
       - "8000:8000"
@@ -31,3 +40,7 @@ services:
 
 volumes:
   portainer_data:
+
+networks:
+  traefik_internal:
+    external: true
