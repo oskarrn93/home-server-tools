@@ -1,0 +1,8 @@
+version: "3.3"
+services:
+  healthcheck:
+    restart: unless-stopped
+    container_name: healthcheck
+    build: .
+    ports:
+      - "8086:8080"
