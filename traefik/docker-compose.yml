@@ -12,10 +12,16 @@ services:
       - "--metrics.prometheus.addServicesLabels=true"
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
+      - "--providers.file.directory=/dynamic"
+      - "--providers.file.watch=true"
+      - "--experimental.plugins.fail2ban.modulename=github.com/tomMoulard/fail2ban"
+      - "--experimental.plugins.fail2ban.version=v0.9.0"
       - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.middlewares=ratelimit@file,fail2ban@file"
       # - "--entrypoints.web.http.redirections.entrypoint.to=web_secure"
       # - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
       - "--entrypoints.web_secure.address=:443"
+      - "--entrypoints.web_secure.http.middlewares=ratelimit@file,fail2ban@file"
       - "--certificatesResolvers.lets_encrypt.acme.httpChallenge=true"
       - "--certificatesResolvers.lets_encrypt.acme.email=oskar@oskarrosen.com"
       - "--certificatesResolvers.lets_encrypt.acme.storage=/letsencrypt/acme.json"
@@ -26,6 +32,8 @@ services:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
       - "~/.aws/credentials:/root/.aws/credentials:ro"
       - "./lets_encrypt/acme.json:/letsencrypt/acme.json"
+      - "./dynamic:/dynamic:ro"
+      - "plugins-storage:/plugins-storage"
     networks:
       - default
       - traefik_internal
@@ -33,7 +41,10 @@ services:
       - "80:80"
       - "443:443"
       - "8081:8080"
- 
+
+volumes:
+  plugins-storage:
+
 networks:
   traefik_internal:
    external: true
