@@ -1,0 +1,134 @@
+---
+- name: Install PostgreSQL and MariaDB locally
+  hosts: localhost
+  become: true
+  gather_facts: true
+
+  vars_files:
+    - vars/local-databases.yml
+
+  tasks:
+    - name: Install database packages
+      ansible.builtin.apt:
+        name:
+          - postgresql
+          - postgresql-contrib
+          - mariadb-server
+          - mariadb-client
+          - ufw
+          - python3-psycopg2
+          - python3-pymysql
+        state: present
+        update_cache: true
+
+    - name: Ensure PostgreSQL is enabled and started
+      ansible.builtin.service:
+        name: postgresql
+        enabled: true
+        state: started
+
+    - name: Ensure MariaDB is enabled and started
+      ansible.builtin.service:
+        name: mariadb
+        enabled: true
+        state: started
+
+    - name: Allow MariaDB connections from Docker networks
+      ansible.builtin.lineinfile:
+        path: /etc/mysql/mariadb.conf.d/50-server.cnf
+        regexp: '^\s*bind-address\s*='
+        line: "bind-address = 0.0.0.0"
+      notify: Restart MariaDB
+
+    - name: Allow MariaDB from Docker networks in UFW
+      community.general.ufw:
+        rule: allow
+        direction: in
+        from_ip: "{{ mariadb_docker_network }}"
+        to_port: "3306"
+        proto: tcp
+
+    - name: Ensure PostgreSQL user exists
+      community.postgresql.postgresql_user:
+        name: "{{ postgres_user }}"
+        password: "{{ postgres_password }}"
+        role_attr_flags: CREATEDB,SUPERUSER
+        state: present
+      become_user: postgres
+      vars:
+        ansible_ssh_pipelining: true
+
+    - name: Ensure PostgreSQL database exists
+      community.postgresql.postgresql_db:
+        name: "{{ postgres_db }}"
+        owner: "{{ postgres_user }}"
+        state: present
+      become_user: postgres
+      vars:
+        ansible_ssh_pipelining: true
+
+    - name: Ensure PostgreSQL root password is set
+      community.postgresql.postgresql_user:
+        name: "{{ postgres_root_user }}"
+        password: "{{ postgres_root_password }}"
+        role_attr_flags: SUPERUSER
+        state: present
+      become_user: postgres
+      when: postgres_root_password is defined and postgres_root_password | length > 0
+
+    - name: Ensure MariaDB root password is set
+      community.mysql.mysql_user:
+        name: "{{ mariadb_root_user }}"
+        password: "{{ mariadb_root_password }}"
+        plugin: mysql_native_password
+        login_unix_socket: /run/mysqld/mysqld.sock
+        login_user: "{{ mariadb_root_user }}"
+        login_password: "{{ mariadb_root_password }}"
+        check_implicit_admin: true
+        state: present
+      when: mariadb_root_password is defined and mariadb_root_password | length > 0
+
+    - name: Ensure MariaDB app user exists
+      community.mysql.mysql_user:
+        name: "{{ mariadb_user }}"
+        password: "{{ mariadb_password }}"
+        host: localhost
+        priv: "{{ mariadb_database }}.*:ALL,GRANT"
+        state: present
+        login_user: root
+        login_password: "{{ mariadb_root_password }}"
+        login_unix_socket: /run/mysqld/mysqld.sock
+
+    - name: Ensure MariaDB database exists
+      community.mysql.mysql_db:
+        name: "{{ mariadb_database }}"
+        state: present
+        login_user: root
+        login_password: "{{ mariadb_root_password }}"
+        login_unix_socket: /run/mysqld/mysqld.sock
+
+    - name: Configure Uptime Kuma database connection
+      ansible.builtin.copy:
+        dest: "{{ uptime_kuma_env_file }}"
+        owner: oskar
+        group: oskar
+        mode: "0600"
+        content: |
+          DB_TYPE=mysql
+          DB_HOST={{ uptime_kuma_db_host }}
+          DB_PORT={{ uptime_kuma_db_port }}
+          DB_NAME={{ uptime_kuma_db_name }}
+          DB_USER={{ uptime_kuma_db_user }}
+          DB_PASSWORD={{ uptime_kuma_db_password }}
+
+    - name: Show database connection info
+      ansible.builtin.debug:
+        msg:
+          - "PostgreSQL: postgresql://{{ postgres_user }}:{{ postgres_password }}@localhost:5432/{{ postgres_db }}"
+          - "MariaDB: mysql://{{ mariadb_user }}:{{ mariadb_password }}@localhost:3306/{{ mariadb_database }}"
+
+  handlers:
+    - name: Restart MariaDB
+      ansible.builtin.service:
+        name: mariadb
+        state: restarted

@@ -1,0 +1,5 @@
+mariadb_endpoint = "127.0.0.1:3306"
+
+valkey_network_name = "database_valkey"
+valkey_password     = ""
+valkey_port         = 6380
