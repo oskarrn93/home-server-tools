@@ -18,6 +18,16 @@ services:
     ports:
       - "11434:11434"
 
+  ollama-exporter:
+    image: ghcr.io/maravexa/ollama-exporter:v0.1.2
+    container_name: ollama-exporter
+    restart: unless-stopped
+    environment:
+      OLLAMA_URL: http://ollama:11434
+    depends_on:
+      ollama:
+        condition: service_healthy
+
   searxng:
     image: searxng/searxng:2026.8.29-d226b78bc
     container_name: searxng
@@ -120,6 +130,9 @@ services:
       WEBHOOK_URL: https://n8n.oskarrosen.io/
       N8N_SECURE_COOKIE: "false"
       GENERIC_TIMEZONE: ${TZ}
+      N8N_METRICS: "true"
+      N8N_METRICS_INCLUDE_WEBHOOK_METRICS: "true"
+      N8N_METRICS_INCLUDE_WORKFLOW_INFO: "true"
       N8N_OTEL_ENABLED: "true"
       N8N_OTEL_EXPORTER_OTLP_ENDPOINT: http://host.docker.internal:4318
       N8N_INSTANCE_AI_SANDBOX_ENABLED: "true"
