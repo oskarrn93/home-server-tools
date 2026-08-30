@@ -1,0 +1,215 @@
+services:
+  ollama:
+    image: ollama/ollama:0.33.2
+    container_name: ollama
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    volumes:
+      - type: volume
+        source: ollama_data
+        target: /root/.ollama
+        volume:
+          nocopy: true
+      - ./ollama/Modelfile:/Modelfile:ro
+    ports:
+      - "11434:11434"
+
+  openwebui:
+    image: openwebui/open-webui:0.11-slim
+    container_name: openwebui
+    restart: unless-stopped
+    env_file:
+      - openwebui.env
+    depends_on:
+      - ollama
+    environment:
+      OLLAMA_BASE_URL: http://ollama:11434
+    volumes:
+      - type: volume
+        source: openwebui_data
+        target: /app/backend/data
+        volume:
+          nocopy: true
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.openwebui.rule=Host(`openwebui.local.oskarrosen.io`)"
+      - "traefik.http.routers.openwebui.entrypoints=web"
+      - "traefik.http.services.openwebui.loadbalancer.server.port=8080"
+      - "traefik.http.routers.openwebui.service=openwebui"
+      - "traefik.http.routers.openwebui_public.rule=Host(`openwebui.oskarrosen.io`)"
+      - "traefik.http.routers.openwebui_public.entrypoints=web_secure"
+      - "traefik.http.services.openwebui_public.loadbalancer.server.port=8080"
+      - "traefik.http.routers.openwebui_public.service=openwebui"
+      - "traefik.http.routers.openwebui_public.tls=true"
+      - "traefik.http.routers.openwebui_public.tls.certresolver=lets_encrypt"
+      - "traefik.http.routers.openwebui_public.tls.domains[0].main=*.oskarrosen.io"
+      - "traefik.docker.network=traefik_internal"
+    networks:
+      - default
+      - traefik_internal
+    ports:
+      - "3011:8080"
+
+  n8n:
+    image: n8nio/n8n:2.36.8
+    container_name: n8n
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:5678/healthz || exit 1"]
+      interval: 1m30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      ollama:
+        condition: service_started
+      n8n-sandbox-api:
+        condition: service_healthy
+    env_file:
+      - .env
+      - n8n.env
+    environment:
+      N8N_HOST: n8n.oskarrosen.io
+      N8N_PORT: 5678
+      N8N_PROTOCOL: https
+      N8N_EDITOR_BASE_URL: https://n8n.oskarrosen.io
+      WEBHOOK_URL: https://n8n.oskarrosen.io/
+      N8N_SECURE_COOKIE: "false"
+      GENERIC_TIMEZONE: ${TZ}
+      N8N_OTEL_ENABLED: "true"
+      N8N_OTEL_EXPORTER_OTLP_ENDPOINT: http://host.docker.internal:4318
+      N8N_INSTANCE_AI_SANDBOX_ENABLED: "true"
+      N8N_INSTANCE_AI_SANDBOX_PROVIDER: n8n-sandbox
+      N8N_SANDBOX_SERVICE_URL: http://n8n-sandbox-api:8080
+      CREDENTIALS_OVERWRITE_DATA: '{"ollamaApi":{"baseUrl":"http://ollama:11434"}}'
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - type: volume
+        source: n8n_data
+        target: /home/node/.n8n
+        volume:
+          nocopy: true
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.n8n.rule=Host(`n8n.local.oskarrosen.io`)"
+      - "traefik.http.routers.n8n.entrypoints=web"
+      - "traefik.http.services.n8n.loadbalancer.server.port=5678"
+      - "traefik.http.routers.n8n.service=n8n"
+      - "traefik.http.routers.n8n_public.rule=Host(`n8n.oskarrosen.io`)"
+      - "traefik.http.routers.n8n_public.entrypoints=web_secure"
+      - "traefik.http.services.n8n_public.loadbalancer.server.port=5678"
+      - "traefik.http.routers.n8n_public.service=n8n"
+      - "traefik.http.routers.n8n_public.tls=true"
+      - "traefik.http.routers.n8n_public.tls.certresolver=lets_encrypt"
+      - "traefik.http.routers.n8n_public.tls.domains[0].main=*.oskarrosen.io"
+      - "traefik.docker.network=traefik_internal"
+    networks:
+      - default
+      - traefik_internal
+    ports:
+      - "5678:5678"
+
+  n8n-sandbox-tls-init:
+    image: n8nio/n8n-sandbox-service-api:1.2.0
+    container_name: n8n-sandbox-tls-init
+    user: "0:0"
+    entrypoint: ["sh", "-c"]
+    command:
+      - >-
+        bootstrap-mtls.sh
+        --out-dir /tls
+        --api-san n8n-sandbox-api
+        --control-san-prefix n8n-sandbox-runner
+        && chown -R sandbox-api:sandbox-api /tls/api
+    environment:
+      NUM_RUNNERS: 1
+    volumes:
+      - type: volume
+        source: n8n_sandbox_tls
+        target: /tls
+
+  n8n-sandbox-api:
+    image: n8nio/n8n-sandbox-service-api:1.2.0
+    container_name: n8n-sandbox-api
+    restart: unless-stopped
+    depends_on:
+      n8n-sandbox-tls-init:
+        condition: service_completed_successfully
+    volumes:
+      - type: volume
+        source: n8n_sandbox_tls
+        target: /tls
+        read_only: true
+        volume:
+          subpath: api
+      - n8n_sandbox_api_data:/var/lib/n8n-sandbox-api
+    env_file:
+      - n8n-sandbox.env
+    environment:
+      SANDBOX_API_GRPC_TLS_CERT_FILE: /tls/grpc-server.crt
+      SANDBOX_API_GRPC_TLS_KEY_FILE: /tls/grpc-server.key
+      SANDBOX_API_GRPC_TLS_CLIENT_CA_FILE: /tls/ca.crt
+      SANDBOX_API_RUNNER_CONTROL_GRPC_TLS_CA_FILE: /tls/ca.crt
+      SANDBOX_API_RUNNER_CONTROL_GRPC_TLS_CERT_FILE: /tls/control-grpc-api-client.crt
+      SANDBOX_API_RUNNER_CONTROL_GRPC_TLS_KEY_FILE: /tls/control-grpc-api-client.key
+      SANDBOX_API_RUNNER_CONTROL_GRPC_TLS_SERVER_NAME: n8n-sandbox-runner-1
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8080/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+
+  n8n-sandbox-runner-1:
+    image: n8nio/n8n-sandbox-service-runner-dind:1.2.0
+    container_name: n8n-sandbox-runner-1
+    privileged: true
+    restart: unless-stopped
+    depends_on:
+      n8n-sandbox-tls-init:
+        condition: service_completed_successfully
+      n8n-sandbox-api:
+        condition: service_healthy
+    volumes:
+      - type: volume
+        source: n8n_sandbox_tls
+        target: /tls
+        read_only: true
+        volume:
+          subpath: runner
+    env_file:
+      - n8n-sandbox.env
+    environment:
+      SANDBOX_RUNNER_DOCKER_SANDBOX_IMAGE: n8nio/n8n-sandbox-service-sandbox:1.1.0
+      SANDBOX_RUNNER_API_GRPC_ADDR: n8n-sandbox-api:9090
+      SANDBOX_RUNNER_HTTP_BASE_URL: http://n8n-sandbox-runner-1:8080
+      SANDBOX_RUNNER_CONTROL_GRPC_LISTEN_ADDR: ":9091"
+      SANDBOX_RUNNER_CONTROL_GRPC_ADVERTISE_ADDR: n8n-sandbox-runner-1:9091
+      SANDBOX_RUNNER_REGISTRATION_GRPC_CA_FILE: /tls/ca.crt
+      SANDBOX_RUNNER_REGISTRATION_GRPC_CERT_FILE: /tls/grpc-client.crt
+      SANDBOX_RUNNER_REGISTRATION_GRPC_KEY_FILE: /tls/grpc-client.key
+      SANDBOX_RUNNER_REGISTRATION_GRPC_SERVER_NAME: n8n-sandbox-api
+      SANDBOX_RUNNER_CONTROL_GRPC_TLS_CERT_FILE: /tls/control-grpc-server.crt
+      SANDBOX_RUNNER_CONTROL_GRPC_TLS_KEY_FILE: /tls/control-grpc-server.key
+      SANDBOX_RUNNER_CONTROL_GRPC_TLS_CLIENT_CA_FILE: /tls/ca.crt
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8080/readyz"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 20s
+
+volumes:
+  ollama_data:
+  openwebui_data:
+  n8n_data:
+  n8n_sandbox_api_data:
+  n8n_sandbox_tls:
+
+networks:
+  traefik_internal:
+    external: true
