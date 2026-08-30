@@ -205,9 +205,17 @@ services:
 
 volumes:
   ollama_data:
+    external: true
+    name: ai_ollama_data
   openwebui_data:
+    external: true
+    name: ai_openwebui_data
   n8n_data:
+    external: true
+    name: ai_n8n_data
   n8n_sandbox_api_data:
+    external: true
+    name: ai_n8n_sandbox_api_data
   n8n_sandbox_tls:
 
 networks:
