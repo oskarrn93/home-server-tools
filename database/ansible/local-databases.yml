@@ -283,17 +283,23 @@
           - "&*"
           - "+@read"
           - "+@connection"
+          - "-@admin"
+          - "-@dangerous"
+          # ACL rules apply in order, so these specific grants must come after the
+          # category denials above - otherwise -@dangerous silently revokes them
+          # (INFO/CONFIG/CLIENT/LATENCY/SLOWLOG/MEMORY subcommands are in @dangerous).
+          - "+ping"
           - "+info"
           - "+config|get"
           - "+client|list"
           - "+client|info"
           - "+latency|history"
           - "+latency|latest"
+          - "+latency|histogram"
           - "+slowlog|get"
           - "+memory|usage"
           - "+memory|stats"
-          - "-@admin"
-          - "-@dangerous"
+          - "+cluster|info"
       changed_when: true
       no_log: true
 
@@ -331,14 +337,18 @@
         content: |
           DATA_SOURCE_NAME=postgresql://{{ postgres_exporter_user }}:{{ postgres_exporter_password }}@{{ docker_gateway_ip }}:5432/{{ postgres_db }}?sslmode=disable
 
-    - name: Write MariaDB exporter env file for server-observability
+    - name: Write MariaDB exporter my.cnf for server-observability
       ansible.builtin.copy:
-        dest: "{{ mariadb_exporter_env_file }}"
+        dest: "{{ mariadb_exporter_cnf_file }}"
         owner: oskar
         group: oskar
-        mode: "0600"
+        # mysqld_exporter (v0.15+) reads credentials from this file directly, running as an
+        # unprivileged container user - it must be world-readable like uptime-kuma-metrics-token.
+        mode: "0644"
         content: |
-          DATA_SOURCE_NAME={{ mariadb_exporter_user }}:{{ mariadb_exporter_password }}@({{ docker_gateway_ip }}:3306)/
+          [client]
+          user = {{ mariadb_exporter_user }}
+          password = {{ mariadb_exporter_password }}
 
     - name: Write Valkey exporter env file for server-observability
       ansible.builtin.copy:

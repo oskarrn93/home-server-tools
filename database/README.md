@@ -118,7 +118,7 @@ This playbook will:
 - open PostgreSQL (5432), MariaDB (3306), and Valkey (6379) to the Docker bridge network (`docker_network` in `ansible/vars/local-databases.yml`) via bind-address/listen_addresses changes and UFW rules, so containers in `server-observability` can reach them at the Docker gateway IP
 - create dedicated read-only `*_exporter` users/ACLs (Prometheus postgres_exporter/mysqld_exporter/redis_exporter) and `grafana` users (Postgres: `pg_read_all_data`; MariaDB: global `SELECT`) for the server-observability dashboards
 - create a Valkey ACL user (`searxng`) restricted to db 1
-- write the Prometheus exporter env files (`postgres-exporter.env`, `mysqld-exporter.env`, `redis-exporter.env`) directly into `server-observability`
+- write the Prometheus exporter credential files (`postgres-exporter.env`, `mysqld-exporter.my.cnf`, `redis-exporter.env`) directly into `server-observability`
 - print the local connection URLs, including the Grafana credentials to paste into `server-observability/terraform.tfvars`
 
 ## Connection details

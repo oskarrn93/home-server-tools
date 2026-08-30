@@ -44,8 +44,8 @@ an agent without a TTY), since `--ask-become-pass` needs a password typed at the
   a Valkey ACL user) and `grafana` users (Postgres: `pg_read_all_data`; MariaDB: global `SELECT`)
   used by the dashboards/data sources in `server-observability`.
 - Creates the Valkey ACL user for SearXNG (`searxng`, restricted to db 1).
-- Writes `uptime-kuma.env` and the three Prometheus exporter env files
-  (`postgres-exporter.env`, `mysqld-exporter.env`, `redis-exporter.env`) directly into
+- Writes `uptime-kuma.env` and the Prometheus exporter credential files
+  (`postgres-exporter.env`, `mysqld-exporter.my.cnf`, `redis-exporter.env`) directly into
   `server-observability`.
 - Prints connection URLs at the end, including the Grafana credentials to paste into
   `server-observability/terraform.tfvars` (`postgres_grafana_user`/`password`,
