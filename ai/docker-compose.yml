@@ -84,6 +84,9 @@ services:
       N8N_INSTANCE_AI_SANDBOX_ENABLED: "true"
       N8N_INSTANCE_AI_SANDBOX_PROVIDER: n8n-sandbox
       N8N_SANDBOX_SERVICE_URL: http://n8n-sandbox-api:8080
+      N8N_INSTANCE_AI_MODEL: openai/qwen3.5-4b-custom
+      N8N_INSTANCE_AI_MODEL_URL: http://ollama:11434/v1
+      N8N_INSTANCE_AI_MODEL_API_KEY: ollama
       CREDENTIALS_OVERWRITE_DATA: '{"ollamaApi":{"baseUrl":"http://ollama:11434"}}'
     extra_hosts:
       - "host.docker.internal:host-gateway"
