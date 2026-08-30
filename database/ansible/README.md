@@ -3,12 +3,15 @@
 Installs and configures PostgreSQL, MariaDB, and Valkey directly on this host, and wires up
 monitoring for them in the sibling `server-observability` repo.
 
+This directory also has `host-tuning.yml`, a small playbook for miscellaneous host-level
+kernel/sysctl tuning unrelated to the databases (see below).
+
 ## Prerequisites
 
 ```bash
 sudo apt-get update
 sudo apt-get install -y ansible
-ansible-galaxy collection install community.postgresql community.mysql community.general
+ansible-galaxy collection install community.postgresql community.mysql community.general ansible.posix
 ```
 
 ## Run it
@@ -73,4 +76,22 @@ In `server-observability`:
 docker compose up -d postgres_exporter mysqld_exporter redis_exporter prometheus
 terraform plan
 terraform apply
+```
+
+## Host tuning (`host-tuning.yml`)
+
+Miscellaneous host kernel/sysctl tuning that isn't specific to the databases above. Currently:
+
+- Raises `fs.inotify.max_user_watches` (to 1048576) and `fs.inotify.max_user_instances` (to 512)
+  via `/etc/sysctl.d/99-inotify.conf`, applied immediately. The default watch limit (65536) is too
+  low for Immich's library watcher on large photo libraries, which otherwise logs repeated
+  `ENOSPC: System limit for number of file watchers reached` errors. This is a host kernel limit
+  shared with all containers (inotify isn't namespaced), so it's fixed here rather than in
+  `server-observability` or the Immich container config.
+
+Run it the same way as the database playbook:
+
+```bash
+cd /home/oskar/github/home-server-tools/database/ansible
+ansible-playbook host-tuning.yml --ask-become-pass
 ```
