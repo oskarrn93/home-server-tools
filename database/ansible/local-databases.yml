@@ -281,7 +281,7 @@
         password: "{{ mariadb_exporter_password }}"
         host: "%"
         priv:
-          "*.*": "PROCESS,REPLICATION CLIENT"
+          "*.*": "PROCESS,REPLICATION CLIENT,SLAVE MONITOR"
           "performance_schema.*": "SELECT"
         state: present
         login_user: root
