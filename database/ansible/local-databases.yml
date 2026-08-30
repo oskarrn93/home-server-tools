@@ -15,6 +15,8 @@
           - postgresql-contrib
           - mariadb-server
           - mariadb-client
+          - valkey-server
+          - valkey-tools
           - ufw
           - python3-psycopg2
           - python3-pymysql
@@ -33,6 +35,12 @@
         enabled: true
         state: started
 
+    - name: Ensure Valkey is enabled and started
+      ansible.builtin.service:
+        name: valkey-server
+        enabled: true
+        state: started
+
     - name: Allow MariaDB connections from Docker networks
       ansible.builtin.lineinfile:
         path: /etc/mysql/mariadb.conf.d/50-server.cnf
@@ -44,9 +52,66 @@
       community.general.ufw:
         rule: allow
         direction: in
-        from_ip: "{{ mariadb_docker_network }}"
+        from_ip: "{{ docker_network }}"
         to_port: "3306"
         proto: tcp
+
+    - name: Allow PostgreSQL to listen on all interfaces
+      ansible.builtin.lineinfile:
+        path: "{{ postgresql_conf_path }}"
+        regexp: '^#?\s*listen_addresses\s*='
+        line: "listen_addresses = '*'"
+      notify: Restart PostgreSQL
+
+    - name: Allow PostgreSQL connections from Docker networks
+      community.postgresql.postgresql_pg_hba:
+        dest: "{{ postgresql_hba_path }}"
+        contype: host
+        databases: all
+        users: all
+        source: "{{ docker_network }}"
+        method: scram-sha-256
+      notify: Restart PostgreSQL
+
+    - name: Allow PostgreSQL from Docker networks in UFW
+      community.general.ufw:
+        rule: allow
+        direction: in
+        from_ip: "{{ docker_network }}"
+        to_port: "5432"
+        proto: tcp
+
+    - name: Allow Valkey to listen on all interfaces
+      ansible.builtin.lineinfile:
+        path: /etc/valkey/valkey.conf
+        regexp: '^bind\s'
+        line: "bind * -::*"
+      notify: Restart Valkey
+
+    - name: Set the Valkey default-user password
+      ansible.builtin.lineinfile:
+        path: /etc/valkey/valkey.conf
+        regexp: '^#?\s*requirepass\s'
+        line: "requirepass {{ valkey_root_password }}"
+      notify: Restart Valkey
+
+    - name: Enable Valkey AOF persistence
+      ansible.builtin.lineinfile:
+        path: /etc/valkey/valkey.conf
+        regexp: '^appendonly\s'
+        line: "appendonly yes"
+      notify: Restart Valkey
+
+    - name: Allow Valkey from Docker networks in UFW
+      community.general.ufw:
+        rule: allow
+        direction: in
+        from_ip: "{{ docker_network }}"
+        to_port: "6379"
+        proto: tcp
+
+    - name: Apply service restarts before configuring users/ACLs over the network
+      ansible.builtin.meta: flush_handlers
 
     - name: Ensure PostgreSQL user exists
       community.postgresql.postgresql_user:
@@ -75,6 +140,34 @@
         state: present
       become_user: postgres
       when: postgres_root_password is defined and postgres_root_password | length > 0
+
+    - name: Ensure PostgreSQL exporter user exists
+      community.postgresql.postgresql_user:
+        name: "{{ postgres_exporter_user }}"
+        password: "{{ postgres_exporter_password }}"
+        state: present
+      become_user: postgres
+
+    - name: Grant pg_monitor to the PostgreSQL exporter user
+      community.postgresql.postgresql_membership:
+        group: pg_monitor
+        target_role: "{{ postgres_exporter_user }}"
+        state: present
+      become_user: postgres
+
+    - name: Ensure PostgreSQL Grafana user exists
+      community.postgresql.postgresql_user:
+        name: "{{ postgres_grafana_user }}"
+        password: "{{ postgres_grafana_password }}"
+        state: present
+      become_user: postgres
+
+    - name: Grant pg_read_all_data to the PostgreSQL Grafana user
+      community.postgresql.postgresql_membership:
+        group: pg_read_all_data
+        target_role: "{{ postgres_grafana_user }}"
+        state: present
+      become_user: postgres
 
     - name: Ensure MariaDB root password is set
       community.mysql.mysql_user:
@@ -107,6 +200,31 @@
         login_password: "{{ mariadb_root_password }}"
         login_unix_socket: /run/mysqld/mysqld.sock
 
+    - name: Ensure MariaDB exporter user exists
+      community.mysql.mysql_user:
+        name: "{{ mariadb_exporter_user }}"
+        password: "{{ mariadb_exporter_password }}"
+        host: "%"
+        priv:
+          "*.*": "PROCESS,REPLICATION CLIENT"
+          "performance_schema.*": "SELECT"
+        state: present
+        login_user: root
+        login_password: "{{ mariadb_root_password }}"
+        login_unix_socket: /run/mysqld/mysqld.sock
+
+    - name: Ensure MariaDB Grafana user exists
+      community.mysql.mysql_user:
+        name: "{{ mariadb_grafana_user }}"
+        password: "{{ mariadb_grafana_password }}"
+        host: "%"
+        priv:
+          "*.*": "SELECT,PROCESS"
+        state: present
+        login_user: root
+        login_password: "{{ mariadb_root_password }}"
+        login_unix_socket: /run/mysqld/mysqld.sock
+
     - name: Configure Uptime Kuma database connection
       ansible.builtin.copy:
         dest: "{{ uptime_kuma_env_file }}"
@@ -125,6 +243,9 @@
       ansible.builtin.command:
         argv:
           - valkey-cli
+          - --no-auth-warning
+          - -a
+          - "{{ valkey_root_password }}"
           - -h
           - "{{ valkey_host }}"
           - -p
@@ -142,10 +263,47 @@
       changed_when: true
       no_log: true
 
+    - name: Ensure Valkey ACL user exists for the Prometheus exporter
+      ansible.builtin.command:
+        argv:
+          - valkey-cli
+          - --no-auth-warning
+          - -a
+          - "{{ valkey_root_password }}"
+          - -h
+          - "{{ valkey_host }}"
+          - -p
+          - "{{ valkey_port | string }}"
+          - ACL
+          - SETUSER
+          - "{{ valkey_exporter_user }}"
+          - "on"
+          - ">{{ valkey_exporter_password }}"
+          - "~*"
+          - "&*"
+          - "+@read"
+          - "+@connection"
+          - "+info"
+          - "+config|get"
+          - "+client|list"
+          - "+client|info"
+          - "+latency|history"
+          - "+latency|latest"
+          - "+slowlog|get"
+          - "+memory|usage"
+          - "+memory|stats"
+          - "-@admin"
+          - "-@dangerous"
+      changed_when: true
+      no_log: true
+
     - name: Persist the Valkey ACL to disk if an ACL file is configured
       ansible.builtin.command:
         argv:
           - valkey-cli
+          - --no-auth-warning
+          - -a
+          - "{{ valkey_root_password }}"
           - -h
           - "{{ valkey_host }}"
           - -p
@@ -164,15 +322,57 @@
           (if this reports no ACL file is configured, the user lives in memory only
           and ACL SETUSER must be re-run after a Valkey restart)
 
+    - name: Write PostgreSQL exporter env file for server-observability
+      ansible.builtin.copy:
+        dest: "{{ postgres_exporter_env_file }}"
+        owner: oskar
+        group: oskar
+        mode: "0600"
+        content: |
+          DATA_SOURCE_NAME=postgresql://{{ postgres_exporter_user }}:{{ postgres_exporter_password }}@{{ docker_gateway_ip }}:5432/{{ postgres_db }}?sslmode=disable
+
+    - name: Write MariaDB exporter env file for server-observability
+      ansible.builtin.copy:
+        dest: "{{ mariadb_exporter_env_file }}"
+        owner: oskar
+        group: oskar
+        mode: "0600"
+        content: |
+          DATA_SOURCE_NAME={{ mariadb_exporter_user }}:{{ mariadb_exporter_password }}@({{ docker_gateway_ip }}:3306)/
+
+    - name: Write Valkey exporter env file for server-observability
+      ansible.builtin.copy:
+        dest: "{{ valkey_exporter_env_file }}"
+        owner: oskar
+        group: oskar
+        mode: "0600"
+        content: |
+          REDIS_ADDR=redis://{{ docker_gateway_ip }}:{{ valkey_port }}
+          REDIS_USER={{ valkey_exporter_user }}
+          REDIS_PASSWORD={{ valkey_exporter_password }}
+
     - name: Show database connection info
       ansible.builtin.debug:
         msg:
           - "PostgreSQL: postgresql://{{ postgres_user }}:{{ postgres_password }}@localhost:5432/{{ postgres_db }}"
+          - "PostgreSQL (Grafana): postgresql://{{ postgres_grafana_user }}:{{ postgres_grafana_password }}@localhost:5432/{{ postgres_db }}"
           - "MariaDB: mysql://{{ mariadb_user }}:{{ mariadb_password }}@localhost:3306/{{ mariadb_database }}"
+          - "MariaDB (Grafana): mysql://{{ mariadb_grafana_user }}:{{ mariadb_grafana_password }}@localhost:3306/mysql"
           - "Valkey (searxng): valkey://{{ valkey_searxng_user }}:{{ valkey_searxng_password }}@{{ valkey_host }}:{{ valkey_port }}/{{ valkey_searxng_db }}"
+          - "Put the Grafana lines above into server-observability/terraform.tfvars as postgres_grafana_user/password and mariadb_grafana_user/password."
 
   handlers:
     - name: Restart MariaDB
       ansible.builtin.service:
         name: mariadb
+        state: restarted
+
+    - name: Restart PostgreSQL
+      ansible.builtin.service:
+        name: postgresql
+        state: restarted
+
+    - name: Restart Valkey
+      ansible.builtin.service:
+        name: valkey-server
         state: restarted

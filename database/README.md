@@ -3,8 +3,8 @@
 This directory contains three ways to manage the local database stack:
 
 - Docker Compose for a local containerized stack
-- Terraform for infrastructure/state management of the Docker-based stack
-- Ansible for installing PostgreSQL and MariaDB directly on the host for easier future upgrades
+- Terraform for infrastructure/state management of the Docker-based stack (Uptime Kuma's MariaDB database only, now that Valkey is host-installed)
+- Ansible for installing PostgreSQL, MariaDB, and Valkey directly on the host for easier future upgrades
 
 ## Quick start
 
@@ -112,11 +112,14 @@ make ansible-check
 
 This playbook will:
 
-- install PostgreSQL and MariaDB
+- install PostgreSQL, MariaDB, and Valkey
 - start and enable the system services
 - create the app database and users
-- create a Valkey ACL user (`searxng`) restricted to db 1 on the host's existing Valkey instance
-- print the local connection URLs
+- open PostgreSQL (5432), MariaDB (3306), and Valkey (6379) to the Docker bridge network (`docker_network` in `ansible/vars/local-databases.yml`) via bind-address/listen_addresses changes and UFW rules, so containers in `server-observability` can reach them at the Docker gateway IP
+- create dedicated read-only `*_exporter` users/ACLs (Prometheus postgres_exporter/mysqld_exporter/redis_exporter) and `grafana` users (Postgres: `pg_read_all_data`; MariaDB: global `SELECT`) for the server-observability dashboards
+- create a Valkey ACL user (`searxng`) restricted to db 1
+- write the Prometheus exporter env files (`postgres-exporter.env`, `mysqld-exporter.env`, `redis-exporter.env`) directly into `server-observability`
+- print the local connection URLs, including the Grafana credentials to paste into `server-observability/terraform.tfvars`
 
 ## Connection details
 
@@ -124,11 +127,12 @@ The Ansible playbook defaults to:
 
 - PostgreSQL: `postgresql://app:changeme@localhost:5432/app`
 - MariaDB: `mysql://app:changeme@localhost:3307/app`
+- Valkey: `valkey://localhost:6379` (default-user password set via `valkey_root_password`)
 
 ## Notes
 
 - The Docker Compose stack in this repo is a good option for quick local testing and isolated services.
-- The Terraform setup also manages the Docker-based stack and tracks state.
+- The Terraform setup now only manages the Docker-based Uptime Kuma database bootstrap (`null_resource.uptime_kuma_database`); Valkey moved to the Ansible/host-installed path alongside Postgres and MariaDB.
 - The Ansible setup is the preferred local-host approach if the goal is easier future upgrades and direct OS-managed database installs.
-- MariaDB defaults to host port 3307, and Valkey defaults to 6380, because local services are already using 3306 and 6379 on this machine.
+- MariaDB defaults to host port 3307 because a local service is already using 3306 on this machine.
 - For a real production or long-lived server, prefer host-installed databases and package-managed upgrades over container-managed databases unless you specifically need the isolation benefits of containers.
