@@ -18,6 +18,39 @@ services:
     ports:
       - "11434:11434"
 
+  searxng:
+    image: searxng/searxng:2026.8.29-d226b78bc
+    container_name: searxng
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:8080/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    env_file:
+      - searxng.env
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+      - type: volume
+        source: searxng_data
+        target: /var/cache/searxng
+        volume:
+          nocopy: true
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.searxng.rule=Host(`searxng.local.oskarrosen.io`)"
+      - "traefik.http.routers.searxng.entrypoints=web"
+      - "traefik.http.services.searxng.loadbalancer.server.port=8080"
+      - "traefik.http.routers.searxng.service=searxng"
+      - "traefik.docker.network=traefik_internal"
+    networks:
+      - default
+      - traefik_internal
+    ports:
+      - "8888:8080"
+
   openwebui:
     image: openwebui/open-webui:0.11-slim
     container_name: openwebui
@@ -25,9 +58,15 @@ services:
     env_file:
       - openwebui.env
     depends_on:
-      - ollama
+      ollama:
+        condition: service_healthy
+      searxng:
+        condition: service_healthy
     environment:
       OLLAMA_BASE_URL: http://ollama:11434
+      ENABLE_WEB_SEARCH: "True"
+      WEB_SEARCH_ENGINE: searxng
+      SEARXNG_QUERY_URL: http://searxng:8080/search?q=<query>
     volumes:
       - type: volume
         source: openwebui_data
@@ -65,8 +104,10 @@ services:
       retries: 3
     depends_on:
       ollama:
-        condition: service_started
+        condition: service_healthy
       n8n-sandbox-api:
+        condition: service_healthy
+      searxng:
         condition: service_healthy
     env_file:
       - .env
@@ -87,6 +128,7 @@ services:
       N8N_INSTANCE_AI_MODEL: openai/qwen3.5-4b-custom
       N8N_INSTANCE_AI_MODEL_URL: http://ollama:11434/v1
       N8N_INSTANCE_AI_MODEL_API_KEY: ollama
+      N8N_INSTANCE_AI_SEARXNG_URL: http://searxng:8080
       CREDENTIALS_OVERWRITE_DATA: '{"ollamaApi":{"baseUrl":"http://ollama:11434"}}'
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -220,6 +262,7 @@ volumes:
     external: true
     name: ai_n8n_sandbox_api_data
   n8n_sandbox_tls:
+  searxng_data:
 
 networks:
   traefik_internal:

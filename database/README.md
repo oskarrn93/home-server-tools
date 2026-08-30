@@ -115,6 +115,7 @@ This playbook will:
 - install PostgreSQL and MariaDB
 - start and enable the system services
 - create the app database and users
+- create a Valkey ACL user (`searxng`) restricted to db 1 on the host's existing Valkey instance
 - print the local connection URLs
 
 ## Connection details

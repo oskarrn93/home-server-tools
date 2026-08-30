@@ -121,11 +121,55 @@
           DB_USER={{ uptime_kuma_db_user }}
           DB_PASSWORD={{ uptime_kuma_db_password }}
 
+    - name: Ensure Valkey ACL user exists for SearXNG, restricted to db {{ valkey_searxng_db }}
+      ansible.builtin.command:
+        argv:
+          - valkey-cli
+          - -h
+          - "{{ valkey_host }}"
+          - -p
+          - "{{ valkey_port | string }}"
+          - ACL
+          - SETUSER
+          - "{{ valkey_searxng_user }}"
+          - "on"
+          - ">{{ valkey_searxng_password }}"
+          - "~*"
+          - "+@all"
+          - "-@admin"
+          - "-@dangerous"
+          - "db={{ valkey_searxng_db }}"
+      changed_when: true
+      no_log: true
+
+    - name: Persist the Valkey ACL to disk if an ACL file is configured
+      ansible.builtin.command:
+        argv:
+          - valkey-cli
+          - -h
+          - "{{ valkey_host }}"
+          - -p
+          - "{{ valkey_port | string }}"
+          - ACL
+          - SAVE
+      register: valkey_acl_save
+      changed_when: false
+      failed_when: false
+
+    - name: Show Valkey ACL persistence result
+      ansible.builtin.debug:
+        msg: >-
+          {{ valkey_acl_save.stdout | default('') }}
+          {{ valkey_acl_save.stderr | default('') }}
+          (if this reports no ACL file is configured, the user lives in memory only
+          and ACL SETUSER must be re-run after a Valkey restart)
+
     - name: Show database connection info
       ansible.builtin.debug:
         msg:
           - "PostgreSQL: postgresql://{{ postgres_user }}:{{ postgres_password }}@localhost:5432/{{ postgres_db }}"
           - "MariaDB: mysql://{{ mariadb_user }}:{{ mariadb_password }}@localhost:3306/{{ mariadb_database }}"
+          - "Valkey (searxng): valkey://{{ valkey_searxng_user }}:{{ valkey_searxng_password }}@{{ valkey_host }}:{{ valkey_port }}/{{ valkey_searxng_db }}"
 
   handlers:
     - name: Restart MariaDB
