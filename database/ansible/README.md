@@ -35,15 +35,24 @@ an agent without a TTY), since `--ask-become-pass` needs a password typed at the
 
 - Installs `postgresql`, `mariadb-server`, `valkey-server` (+ client/tools packages) and enables
   their systemd services.
+- Installs `pgvector` and [VectorChord](https://github.com/tensorchord/VectorChord)
+  (`vectorchord_version` in `vars/local-databases.yml`) for PostgreSQL and preloads `vchord` via
+  `shared_preload_libraries`, since Immich requires it for embeddings search.
 - Opens PostgreSQL (5432), MariaDB (3306), and Valkey (6379) to the Docker bridge network
   (`docker_network` in `vars/local-databases.yml`) via bind-address/listen_addresses changes and
   UFW rules, so containers in `server-observability` can reach them at the Docker gateway IP
   (`docker_gateway_ip`, `172.17.0.1`).
 - Creates the app database/user for PostgreSQL and MariaDB, and sets root passwords.
+- Creates a dedicated PostgreSQL database/user for Immich (`immich_db`/`immich_user`), with the
+  `vchord` and `earthdistance` extensions enabled in that database, and a Valkey ACL user for
+  Immich (`valkey_immich_user`) that the app selects its own db index into (`valkey_immich_db`) -
+  Valkey ACL has no per-database restriction, so this isolation is by convention, not enforcement.
 - Creates read-only monitoring users for Prometheus (`postgres_exporter`, `mysqld_exporter`,
   a Valkey ACL user) and `grafana` users (Postgres: `pg_read_all_data`; MariaDB: global `SELECT`)
   used by the dashboards/data sources in `server-observability`.
-- Creates the Valkey ACL user for SearXNG (`searxng`, restricted to db 1).
+- Creates the Valkey ACL user for SearXNG (`searxng`, using db 1 the same way).
+- Configures a Valkey `aclfile` (`/etc/valkey/users.acl`) so ACL users created above survive a
+  Valkey restart/reboot instead of only living in memory.
 - Writes `uptime-kuma.env` and the Prometheus exporter credential files
   (`postgres-exporter.env`, `mysqld-exporter.my.cnf`, `redis-exporter.env`) directly into
   `server-observability`.

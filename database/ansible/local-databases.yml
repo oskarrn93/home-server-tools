@@ -23,6 +23,22 @@
         state: present
         update_cache: true
 
+    - name: Install pgvector for PostgreSQL {{ postgresql_version }} (VectorChord dependency, for Immich)
+      ansible.builtin.apt:
+        name: "postgresql-{{ postgresql_version }}-pgvector"
+        state: present
+
+    - name: Download the VectorChord package (for Immich)
+      ansible.builtin.get_url:
+        url: "https://github.com/tensorchord/VectorChord/releases/download/{{ vectorchord_version }}/postgresql-{{ postgresql_version }}-vchord_{{ vectorchord_version }}-1_amd64.deb"
+        dest: "/tmp/postgresql-{{ postgresql_version }}-vchord_{{ vectorchord_version }}.deb"
+        mode: "0644"
+
+    - name: Install the VectorChord package (for Immich)
+      ansible.builtin.apt:
+        deb: "/tmp/postgresql-{{ postgresql_version }}-vchord_{{ vectorchord_version }}.deb"
+        state: present
+
     - name: Ensure PostgreSQL is enabled and started
       ansible.builtin.service:
         name: postgresql
@@ -63,6 +79,13 @@
         line: "listen_addresses = '*'"
       notify: Restart PostgreSQL
 
+    - name: Preload the VectorChord library (for Immich)
+      ansible.builtin.lineinfile:
+        path: "{{ postgresql_conf_path }}"
+        regexp: '^#?\s*shared_preload_libraries\s*='
+        line: "shared_preload_libraries = 'vchord'"
+      notify: Restart PostgreSQL
+
     - name: Allow PostgreSQL connections from Docker networks
       community.postgresql.postgresql_pg_hba:
         dest: "{{ postgresql_hba_path }}"
@@ -100,6 +123,24 @@
         path: /etc/valkey/valkey.conf
         regexp: '^appendonly\s'
         line: "appendonly yes"
+      notify: Restart Valkey
+
+    - name: Ensure the Valkey ACL file exists
+      ansible.builtin.copy:
+        dest: /etc/valkey/users.acl
+        content: ""
+        force: false
+        owner: valkey
+        group: valkey
+        mode: "0640"
+
+    # Without an aclfile, ACL SETUSER only lives in memory and every user created
+    # below is silently wiped out on the next Valkey restart/reboot.
+    - name: Configure the Valkey ACL file
+      ansible.builtin.lineinfile:
+        path: /etc/valkey/valkey.conf
+        regexp: '^#?\s*aclfile\s'
+        line: "aclfile /etc/valkey/users.acl"
       notify: Restart Valkey
 
     - name: Allow Valkey from Docker networks in UFW
@@ -166,6 +207,40 @@
       community.postgresql.postgresql_membership:
         group: pg_read_all_data
         target_role: "{{ postgres_grafana_user }}"
+        state: present
+      become_user: postgres
+
+    - name: Ensure PostgreSQL user exists for Immich
+      community.postgresql.postgresql_user:
+        name: "{{ immich_user }}"
+        password: "{{ immich_password }}"
+        state: present
+      become_user: postgres
+
+    - name: Ensure PostgreSQL database exists for Immich
+      community.postgresql.postgresql_db:
+        name: "{{ immich_db }}"
+        owner: "{{ immich_user }}"
+        state: present
+      become_user: postgres
+
+    # Immich needs VectorChord (vchord, superuser-only) for embeddings and
+    # earthdistance (which cascades in its cube dependency) for geo search -
+    # both are created here as the postgres superuser, then left owned by
+    # that database rather than the immich_user role.
+    - name: Ensure the vchord extension exists in the Immich database
+      community.postgresql.postgresql_ext:
+        db: "{{ immich_db }}"
+        name: vchord
+        cascade: true
+        state: present
+      become_user: postgres
+
+    - name: Ensure the earthdistance extension exists in the Immich database
+      community.postgresql.postgresql_ext:
+        db: "{{ immich_db }}"
+        name: earthdistance
+        cascade: true
         state: present
       become_user: postgres
 
@@ -239,7 +314,44 @@
           DB_USER={{ uptime_kuma_db_user }}
           DB_PASSWORD={{ uptime_kuma_db_password }}
 
-    - name: Ensure Valkey ACL user exists for SearXNG, restricted to db {{ valkey_searxng_db }}
+    # Once aclfile is configured (above), Valkey sources the default user's
+    # credentials from that file, not from requirepass in valkey.conf - requirepass
+    # only seeds the default user when no aclfile is in use. The aclfile task creates
+    # an empty users.acl, so without this the default user ends up on `nopass`
+    # regardless of requirepass. On the very first run the default user has no
+    # password yet, so this -a auth attempt itself gets rejected by the server (a
+    # benign stderr warning, not a real failure - see failed_when below); the
+    # ACL SETUSER still goes through because auth isn't required yet.
+    - name: Ensure the Valkey default user's password matches requirepass
+      ansible.builtin.command:
+        argv:
+          - valkey-cli
+          - --no-auth-warning
+          - -a
+          - "{{ valkey_root_password }}"
+          - -h
+          - "{{ valkey_host }}"
+          - -p
+          - "{{ valkey_port | string }}"
+          - ACL
+          - SETUSER
+          - default
+          - "on"
+          - ">{{ valkey_root_password }}"
+          - "~*"
+          - "&*"
+          - "+@all"
+      register: valkey_acl_default
+      changed_when: true
+      failed_when: "'ERR' in valkey_acl_default.stdout"
+      no_log: true
+
+    # Valkey ACL has no per-database restriction - a `db=N` SETUSER modifier is a
+    # syntax error, not a scoping rule. The actual db isolation for these users
+    # comes from Immich/SearXNG selecting their own db index after connecting.
+    # valkey-cli also exits 0 even when the server replies with an error, so this
+    # is registered and explicitly checked rather than trusting changed_when alone.
+    - name: Ensure Valkey ACL user exists for SearXNG
       ansible.builtin.command:
         argv:
           - valkey-cli
@@ -256,11 +368,49 @@
           - "on"
           - ">{{ valkey_searxng_password }}"
           - "~*"
+          - "&*"
           - "+@all"
           - "-@admin"
           - "-@dangerous"
-          - "db={{ valkey_searxng_db }}"
+      register: valkey_acl_searxng
       changed_when: true
+      # stderr can contain a benign "AUTH failed: ERR ..." diagnostic from valkey-cli
+      # itself when the default user currently has no password set - only stdout
+      # carries the actual ACL SETUSER reply, so only check that for a real error.
+      failed_when: "'ERR' in valkey_acl_searxng.stdout"
+      no_log: true
+
+    - name: Ensure Valkey ACL user exists for Immich
+      ansible.builtin.command:
+        argv:
+          - valkey-cli
+          - --no-auth-warning
+          - -a
+          - "{{ valkey_root_password }}"
+          - -h
+          - "{{ valkey_host }}"
+          - -p
+          - "{{ valkey_port | string }}"
+          - ACL
+          - SETUSER
+          - "{{ valkey_immich_user }}"
+          - "on"
+          - ">{{ valkey_immich_password }}"
+          - "~*"
+          # Key access (~) and pub/sub channel access (&) are separate grants in
+          # Valkey ACLs - Immich's microservices worker uses Redis pub/sub for
+          # BullMQ job events and fails with NOPERM without &* too.
+          - "&*"
+          - "+@all"
+          - "-@admin"
+          - "-@dangerous"
+          # ioredis (Immich's Redis client) runs INFO as part of its startup ready
+          # check; -@dangerous strips it like it does for the exporter user above,
+          # so it needs the same explicit re-grant after the category denials.
+          - "+info"
+      register: valkey_acl_immich
+      changed_when: true
+      failed_when: "'ERR' in valkey_acl_immich.stdout"
       no_log: true
 
     - name: Ensure Valkey ACL user exists for the Prometheus exporter
@@ -300,7 +450,9 @@
           - "+memory|usage"
           - "+memory|stats"
           - "+cluster|info"
+      register: valkey_acl_exporter
       changed_when: true
+      failed_when: "'ERR' in valkey_acl_exporter.stdout"
       no_log: true
 
     - name: Persist the Valkey ACL to disk if an ACL file is configured
@@ -369,7 +521,10 @@
           - "MariaDB: mysql://{{ mariadb_user }}:{{ mariadb_password }}@localhost:3306/{{ mariadb_database }}"
           - "MariaDB (Grafana): mysql://{{ mariadb_grafana_user }}:{{ mariadb_grafana_password }}@localhost:3306/mysql"
           - "Valkey (searxng): valkey://{{ valkey_searxng_user }}:{{ valkey_searxng_password }}@{{ valkey_host }}:{{ valkey_port }}/{{ valkey_searxng_db }}"
+          - "PostgreSQL (Immich): postgresql://{{ immich_user }}:{{ immich_password }}@localhost:5432/{{ immich_db }}"
+          - "Valkey (Immich): valkey://{{ valkey_immich_user }}:{{ valkey_immich_password }}@{{ valkey_host }}:{{ valkey_port }}/{{ valkey_immich_db }}"
           - "Put the Grafana lines above into server-observability/terraform.tfvars as postgres_grafana_user/password and mariadb_grafana_user/password."
+          - "Put the Immich lines above into media-services/immich.env as DB_HOSTNAME=host.docker.internal/DB_USERNAME/DB_PASSWORD/DB_DATABASE_NAME and REDIS_HOSTNAME=host.docker.internal/REDIS_USERNAME/REDIS_PASSWORD/REDIS_DBINDEX."
 
   handlers:
     - name: Restart MariaDB
