@@ -1,0 +1,113 @@
+{
+  "name": "Download Cleanup",
+  "settings": {},
+  "nodes": [
+    {
+      "id": "trigger",
+      "name": "Every 30 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0],
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "minutes", "minutesInterval": 30 }]
+        }
+      }
+    },
+    {
+      "id": "qbit-cleanup",
+      "name": "qBittorrent Cleanup",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, -100],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const baseUrl = $env.QBIT_URL;\nconst username = $env.QBIT_USERNAME;\nconst password = $env.QBIT_PASSWORD;\nconst staleThresholdSeconds = 24 * 60 * 60;\nconst formHeaders = { 'Content-Type': 'application/x-www-form-urlencoded' };\nconst toForm = (obj) => Object.entries(obj).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');\n\nconst loginRes = await this.helpers.httpRequest({\n  method: 'POST',\n  url: `${baseUrl}/api/v2/auth/login`,\n  headers: formHeaders,\n  body: toForm({ username, password }),\n  returnFullResponse: true,\n});\n\nconst setCookie = loginRes.headers['set-cookie'];\nif (!setCookie) {\n  throw new Error('qBittorrent login failed - no cookie returned');\n}\nconst cookie = Array.isArray(setCookie) ? setCookie[0].split(';')[0] : setCookie.split(';')[0];\n\nconst torrents = await this.helpers.httpRequest({\n  method: 'GET',\n  url: `${baseUrl}/api/v2/torrents/info`,\n  headers: { Cookie: cookie },\n  json: true,\n});\n\nconst now = Math.floor(Date.now() / 1000);\nconst stuck = torrents.filter((t) =>\n  t.state === 'error' ||\n  t.state === 'missingFiles' ||\n  (t.state === 'stalledDL' && now - t.added_on > staleThresholdSeconds)\n);\n\nif (stuck.length > 0) {\n  await this.helpers.httpRequest({\n    method: 'POST',\n    url: `${baseUrl}/api/v2/torrents/delete`,\n    headers: { ...formHeaders, Cookie: cookie },\n    body: toForm({\n      hashes: stuck.map((t) => t.hash).join('|'),\n      deleteFiles: 'true',\n    }),\n  });\n}\n\nreturn [{\n  json: {\n    service: 'qBittorrent',\n    deletedCount: stuck.length,\n    deletedNames: stuck.map((t) => t.name),\n  },\n  pairedItem: { item: 0 },\n}];"
+      }
+    },
+    {
+      "id": "sab-cleanup",
+      "name": "SABnzbd Cleanup",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 100],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const baseUrl = $env.SABNZBD_URL;\nconst apikey = $env.SABNZBD_APIKEY;\n\nconst history = await this.helpers.httpRequest({\n  method: 'GET',\n  url: baseUrl,\n  qs: { mode: 'history', failed_only: 1, output: 'json', apikey },\n  json: true,\n});\n\nconst failed = (history.history && history.history.slots) || [];\n\nif (failed.length > 0) {\n  await this.helpers.httpRequest({\n    method: 'GET',\n    url: baseUrl,\n    qs: {\n      mode: 'history',\n      name: 'delete',\n      value: failed.map((j) => j.nzo_id).join(','),\n      del_files: 1,\n      output: 'json',\n      apikey,\n    },\n  });\n}\n\nreturn [{\n  json: {\n    service: 'SABnzbd',\n    deletedCount: failed.length,\n    deletedNames: failed.map((j) => j.name),\n  },\n  pairedItem: { item: 0 },\n}];"
+      }
+    },
+    {
+      "id": "merge-cleanup",
+      "name": "Merge Cleanup Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [330, 0],
+      "parameters": {
+        "mode": "append"
+      }
+    },
+    {
+      "id": "build-summary",
+      "name": "Build Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 0],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const items = $input.all();\nconst lines = [];\nlet total = 0;\n\nfor (const item of items) {\n  const { service, deletedCount, deletedNames } = item.json;\n  total += deletedCount;\n  if (deletedCount > 0) {\n    lines.push(`${service}: removed ${deletedCount} (${deletedNames.join(', ')})`);\n  }\n}\n\nreturn [{\n  json: {\n    total,\n    message: lines.join('\\n') || 'No stuck or failed downloads found.',\n  },\n  pairedItem: { item: 0 },\n}];"
+      }
+    },
+    {
+      "id": "has-deletions",
+      "name": "Has Deletions",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [660, 0],
+      "parameters": {
+        "conditions": {
+          "number": [{ "value1": "={{$json.total}}", "operation": "larger", "value2": 0 }]
+        }
+      }
+    },
+    {
+      "id": "notify",
+      "name": "Notify",
+      "type": "n8n-nodes-base.pushover",
+      "typeVersion": 1,
+      "position": [880, 0],
+      "parameters": {
+        "userKey": "__PUSHOVER_USER_KEY__",
+        "title": "Download Cleanup",
+        "message": "={{$json.message}}",
+        "additionalFields": { "priority": 0 }
+      },
+      "credentials": {
+        "pushoverApi": { "id": "__PUSHOVER_CREDENTIAL_ID__", "name": "Pushover account" }
+      }
+    }
+  ],
+  "connections": {
+    "Every 30 Minutes": {
+      "main": [[
+        { "node": "qBittorrent Cleanup", "type": "main", "index": 0 },
+        { "node": "SABnzbd Cleanup", "type": "main", "index": 0 }
+      ]]
+    },
+    "qBittorrent Cleanup": {
+      "main": [[{ "node": "Merge Cleanup Results", "type": "main", "index": 0 }]]
+    },
+    "SABnzbd Cleanup": {
+      "main": [[{ "node": "Merge Cleanup Results", "type": "main", "index": 1 }]]
+    },
+    "Merge Cleanup Results": {
+      "main": [[{ "node": "Build Summary", "type": "main", "index": 0 }]]
+    },
+    "Build Summary": {
+      "main": [[{ "node": "Has Deletions", "type": "main", "index": 0 }]]
+    },
+    "Has Deletions": {
+      "main": [[{ "node": "Notify", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {}
+}

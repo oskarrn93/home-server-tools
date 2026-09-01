@@ -1,0 +1,54 @@
+{
+  "name": "Seerr Request Digest",
+  "settings": {},
+  "nodes": [
+    {
+      "id": "trigger",
+      "name": "Daily 08:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0],
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "days", "daysInterval": 1, "triggerAtHour": 8, "triggerAtMinute": 0 }]
+        }
+      }
+    },
+    {
+      "id": "fetch-counts",
+      "name": "Fetch Seerr Counts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 0],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const baseUrl = $env.SEERR_URL;\nconst apiKey = $env.SEERR_API_KEY;\n\nconst counts = await this.helpers.httpRequest({\n  method: 'GET',\n  url: `${baseUrl}/api/v1/request/count`,\n  headers: { 'X-Api-Key': apiKey },\n  json: true,\n});\n\nreturn [{\n  json: {\n    message: `Seerr requests — pending: ${counts.pending}, approved: ${counts.approved}, processing: ${counts.processing}, available: ${counts.available}, total: ${counts.total}`,\n  },\n}];"
+      }
+    },
+    {
+      "id": "notify",
+      "name": "Send Digest",
+      "type": "n8n-nodes-base.pushover",
+      "typeVersion": 1,
+      "position": [440, 0],
+      "parameters": {
+        "userKey": "__PUSHOVER_USER_KEY__",
+        "title": "Seerr Request Digest",
+        "message": "={{$json.message}}",
+        "additionalFields": { "priority": -1 }
+      },
+      "credentials": {
+        "pushoverApi": { "id": "__PUSHOVER_CREDENTIAL_ID__", "name": "Pushover account" }
+      }
+    }
+  ],
+  "connections": {
+    "Daily 08:00": {
+      "main": [[{ "node": "Fetch Seerr Counts", "type": "main", "index": 0 }]]
+    },
+    "Fetch Seerr Counts": {
+      "main": [[{ "node": "Send Digest", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {}
+}

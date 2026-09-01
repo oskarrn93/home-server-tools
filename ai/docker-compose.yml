@@ -168,6 +168,7 @@ services:
     networks:
       - default
       - traefik_internal
+      - media-services_default
     ports:
       - "5678:5678"
 
@@ -279,4 +280,6 @@ volumes:
 
 networks:
   traefik_internal:
+    external: true
+  media-services_default:
     external: true

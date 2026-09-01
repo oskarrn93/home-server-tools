@@ -1,0 +1,4 @@
+n8n_base_url        = "http://172.17.0.1:5678"
+n8n_api_key         = "replace-with-n8n-api-key" # Settings > n8n API > Create an API key
+pushover_api_token  = "replace-with-pushover-application-token"
+pushover_user_key   = "replace-with-pushover-user-key"

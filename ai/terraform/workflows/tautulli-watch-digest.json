@@ -1,0 +1,54 @@
+{
+  "name": "Tautulli Watch Digest",
+  "settings": {},
+  "nodes": [
+    {
+      "id": "trigger",
+      "name": "Weekly Monday 09:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0],
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "weeks", "weeksInterval": 1, "triggerAtDay": [1], "triggerAtHour": 9, "triggerAtMinute": 0 }]
+        }
+      }
+    },
+    {
+      "id": "fetch-stats",
+      "name": "Fetch Watch Stats",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 0],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const baseUrl = $env.TAUTULLI_URL;\nconst apiKey = $env.TAUTULLI_API_KEY;\n\nconst after = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);\n\nconst res = await this.helpers.httpRequest({\n  method: 'GET',\n  url: `${baseUrl}/api/v2`,\n  qs: { apikey: apiKey, cmd: 'get_history', after, length: 1000 },\n  json: true,\n});\n\nconst rows = (res.response && res.response.data && res.response.data.data) || [];\nconst totalPlays = rows.length;\nconst users = new Set(rows.map((r) => r.friendly_name)).size;\nconst topTitles = Object.entries(\n  rows.reduce((acc, r) => {\n    acc[r.full_title] = (acc[r.full_title] || 0) + 1;\n    return acc;\n  }, {})\n)\n  .sort((a, b) => b[1] - a[1])\n  .slice(0, 5)\n  .map(([title, count]) => `${title} (${count})`);\n\nreturn [{\n  json: {\n    message: `This week: ${totalPlays} plays by ${users} user(s).\\nTop watched:\\n${topTitles.join('\\n') || 'none'}`,\n  },\n}];"
+      }
+    },
+    {
+      "id": "notify",
+      "name": "Send Digest",
+      "type": "n8n-nodes-base.pushover",
+      "typeVersion": 1,
+      "position": [440, 0],
+      "parameters": {
+        "userKey": "__PUSHOVER_USER_KEY__",
+        "title": "Tautulli Weekly Digest",
+        "message": "={{$json.message}}",
+        "additionalFields": { "priority": -1 }
+      },
+      "credentials": {
+        "pushoverApi": { "id": "__PUSHOVER_CREDENTIAL_ID__", "name": "Pushover account" }
+      }
+    }
+  ],
+  "connections": {
+    "Weekly Monday 09:00": {
+      "main": [[{ "node": "Fetch Watch Stats", "type": "main", "index": 0 }]]
+    },
+    "Fetch Watch Stats": {
+      "main": [[{ "node": "Send Digest", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {}
+}

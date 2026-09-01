@@ -6,6 +6,10 @@ terraform {
       source  = "kicc-akdb-de/ollama"
       version = "~> 0.1"
     }
+    restapi = {
+      source  = "Mastercard/restapi"
+      version = "~> 3.0"
+    }
   }
 }
 
