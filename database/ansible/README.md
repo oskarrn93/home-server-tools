@@ -50,6 +50,8 @@ an agent without a TTY), since `--ask-become-pass` needs a password typed at the
   `vchord` and `earthdistance` extensions enabled in that database, and a Valkey ACL user for
   Immich (`valkey_immich_user`) that the app selects its own db index into (`valkey_immich_db`) -
   Valkey ACL has no per-database restriction, so this isolation is by convention, not enforcement.
+- Creates a dedicated PostgreSQL database/user for Mealie (`mealie_db`/`mealie_user`) - no extra
+  extensions needed, unlike Immich.
 - Creates read-only monitoring users for Prometheus (`postgres_exporter`, `mysqld_exporter`,
   a Valkey ACL user) and `grafana` users (Postgres: `pg_read_all_data`; MariaDB: global `SELECT`)
   used by the dashboards/data sources in `server-observability`.

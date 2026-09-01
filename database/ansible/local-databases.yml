@@ -244,6 +244,20 @@
         state: present
       become_user: postgres
 
+    - name: Ensure PostgreSQL user exists for Mealie
+      community.postgresql.postgresql_user:
+        name: "{{ mealie_user }}"
+        password: "{{ mealie_password }}"
+        state: present
+      become_user: postgres
+
+    - name: Ensure PostgreSQL database exists for Mealie
+      community.postgresql.postgresql_db:
+        name: "{{ mealie_db }}"
+        owner: "{{ mealie_user }}"
+        state: present
+      become_user: postgres
+
     - name: Ensure MariaDB root password is set
       community.mysql.mysql_user:
         name: "{{ mariadb_root_user }}"
@@ -523,8 +537,10 @@
           - "Valkey (searxng): valkey://{{ valkey_searxng_user }}:{{ valkey_searxng_password }}@{{ valkey_host }}:{{ valkey_port }}/{{ valkey_searxng_db }}"
           - "PostgreSQL (Immich): postgresql://{{ immich_user }}:{{ immich_password }}@localhost:5432/{{ immich_db }}"
           - "Valkey (Immich): valkey://{{ valkey_immich_user }}:{{ valkey_immich_password }}@{{ valkey_host }}:{{ valkey_port }}/{{ valkey_immich_db }}"
+          - "PostgreSQL (Mealie): postgresql://{{ mealie_user }}:{{ mealie_password }}@localhost:5432/{{ mealie_db }}"
           - "Put the Grafana lines above into server-observability/terraform.tfvars as postgres_grafana_user/password and mariadb_grafana_user/password."
           - "Put the Immich lines above into media-services/immich.env as DB_HOSTNAME=host.docker.internal/DB_USERNAME/DB_PASSWORD/DB_DATABASE_NAME and REDIS_HOSTNAME=host.docker.internal/REDIS_USERNAME/REDIS_PASSWORD/REDIS_DBINDEX."
+          - "Put the Mealie line above into media-services/mealie.env as POSTGRES_SERVER=host.docker.internal/POSTGRES_USER/POSTGRES_PASSWORD/POSTGRES_DB."
 
   handlers:
     - name: Restart MariaDB
