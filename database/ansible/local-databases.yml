@@ -57,6 +57,22 @@
         enabled: true
         state: started
 
+    - name: Check for /etc/mysql/mariadb.cnf
+      ansible.builtin.stat:
+        path: /etc/mysql/mariadb.cnf
+      register: mariadb_cnf_stat
+
+    # This is the file that `!includedir /etc/mysql/mariadb.conf.d/`s the fragments
+    # below into the server's config. Found it missing on this host (a dpkg conffile
+    # that had gone missing) - without it, everything under mariadb.conf.d/ is silently
+    # ignored by mariadbd, including bind-address and max_connect_errors further down.
+    # `apt` sees the package as already installed and won't restore it on its own, so
+    # reinstall explicitly whenever the file is absent.
+    - name: Restore /etc/mysql/mariadb.cnf if missing
+      ansible.builtin.command: apt-get install --reinstall -y mariadb-common
+      when: not mariadb_cnf_stat.stat.exists
+      notify: Restart MariaDB
+
     - name: Allow MariaDB connections from Docker networks
       ansible.builtin.lineinfile:
         path: /etc/mysql/mariadb.conf.d/50-server.cnf
