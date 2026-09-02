@@ -18,6 +18,34 @@ services:
     ports:
       - "11434:11434"
 
+  litellm:
+    image: ghcr.io/berriai/litellm:v1.99.1
+    container_name: litellm
+    restart: unless-stopped
+    depends_on:
+      ollama:
+        condition: service_healthy
+    command:
+      - "--config"
+      - "/app/config.yaml"
+    env_file:
+      - litellm.env
+    volumes:
+      - ./litellm/config.yaml:/app/config.yaml:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health/liveliness', timeout=5)\" || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    networks:
+      - default
+      - media-services_default
+    ports:
+      - "4000:4000"
+
   ollama-exporter:
     image: ghcr.io/maravexa/ollama-exporter:v0.1.2
     container_name: ollama-exporter

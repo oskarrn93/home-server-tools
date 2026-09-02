@@ -288,6 +288,20 @@
         state: present
       become_user: postgres
 
+    - name: Ensure PostgreSQL user exists for LiteLLM
+      community.postgresql.postgresql_user:
+        name: "{{ litellm_user }}"
+        password: "{{ litellm_password }}"
+        state: present
+      become_user: postgres
+
+    - name: Ensure PostgreSQL database exists for LiteLLM
+      community.postgresql.postgresql_db:
+        name: "{{ litellm_db }}"
+        owner: "{{ litellm_user }}"
+        state: present
+      become_user: postgres
+
     - name: Ensure MariaDB root password is set
       community.mysql.mysql_user:
         name: "{{ mariadb_root_user }}"
@@ -484,6 +498,33 @@
       failed_when: "'ERR' in valkey_acl_paperless.stdout"
       no_log: true
 
+    - name: Ensure Valkey ACL user exists for LiteLLM
+      ansible.builtin.command:
+        argv:
+          - valkey-cli
+          - --no-auth-warning
+          - -a
+          - "{{ valkey_root_password }}"
+          - -h
+          - "{{ valkey_host }}"
+          - -p
+          - "{{ valkey_port | string }}"
+          - ACL
+          - SETUSER
+          - "{{ valkey_litellm_user }}"
+          - "on"
+          - ">{{ valkey_litellm_password }}"
+          - "~*"
+          - "&*"
+          - "+@all"
+          - "-@admin"
+          - "-@dangerous"
+          - "+info"
+      register: valkey_acl_litellm
+      changed_when: true
+      failed_when: "'ERR' in valkey_acl_litellm.stdout"
+      no_log: true
+
     - name: Ensure Valkey ACL user exists for the Prometheus exporter
       ansible.builtin.command:
         argv:
@@ -597,10 +638,13 @@
           - "PostgreSQL (Mealie): postgresql://{{ mealie_user }}:{{ mealie_password }}@localhost:5432/{{ mealie_db }}"
           - "PostgreSQL (Paperless-ngx): postgresql://{{ paperless_user }}:{{ paperless_password }}@localhost:5432/{{ paperless_db }}"
           - "Valkey (Paperless-ngx): valkey://{{ valkey_paperless_user }}:{{ valkey_paperless_password }}@{{ valkey_host }}:{{ valkey_port }}/{{ valkey_paperless_db }}"
+          - "PostgreSQL (LiteLLM): postgresql://{{ litellm_user }}:{{ litellm_password }}@localhost:5432/{{ litellm_db }}"
+          - "Valkey (LiteLLM): valkey://{{ valkey_litellm_user }}:{{ valkey_litellm_password }}@{{ valkey_host }}:{{ valkey_port }}/{{ valkey_litellm_db }}"
           - "Put the Grafana lines above into server-observability/terraform.tfvars as postgres_grafana_user/password and mariadb_grafana_user/password."
           - "Put the Immich lines above into media-services/immich.env as DB_HOSTNAME=host.docker.internal/DB_USERNAME/DB_PASSWORD/DB_DATABASE_NAME and REDIS_HOSTNAME=host.docker.internal/REDIS_USERNAME/REDIS_PASSWORD/REDIS_DBINDEX."
           - "Put the Mealie line above into media-services/mealie.env as POSTGRES_SERVER=host.docker.internal/POSTGRES_USER/POSTGRES_PASSWORD/POSTGRES_DB."
           - "Put the Paperless-ngx lines above into media-services/paperless.env as PAPERLESS_DBHOST=host.docker.internal/PAPERLESS_DBUSER/PAPERLESS_DBPASS/PAPERLESS_DBNAME and PAPERLESS_REDIS=redis://<user>:<password>@host.docker.internal:6379/<db>."
+          - "Put the LiteLLM lines above into home-server-tools/ai/litellm.env as DATABASE_URL=postgresql://<user>:<password>@host.docker.internal:5432/<db> and REDIS_HOST=host.docker.internal/REDIS_PORT=6379/REDIS_PASSWORD/REDIS_DB."
 
   handlers:
     - name: Restart MariaDB

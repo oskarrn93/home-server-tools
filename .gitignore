@@ -5,6 +5,7 @@ ai/n8n.env
 ai/n8n-sandbox.env
 ai/openwebui.env
 ai/searxng.env
+ai/litellm.env
 
 # Terraform
 **/.terraform/
