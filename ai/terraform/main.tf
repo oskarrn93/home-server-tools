@@ -26,3 +26,7 @@ provider "ollama" {
 resource "ollama_model" "llava" {
   name = "llava:7b"
 }
+
+resource "ollama_model" "qwen2_5_3b_instruct" {
+  name = "qwen2.5:3b-instruct"
+}

@@ -6,11 +6,27 @@ model_list:
       api_base: http://ollama:11434
 
   # Remote ollama host (192.168.1.17, GPU box) - vision-capable model used by
-  # Immich smart search/analyze and Paperless-AI document tagging.
+  # Immich smart search/analyze and Paperless-AI document tagging. Preferred
+  # deployment; falls back to local ollama (see litellm_settings.fallbacks
+  # below) if this host is unreachable.
   - model_name: qwen3-vl:4b-thinking-q4_K_M
     litellm_params:
       model: ollama/qwen3-vl:4b-thinking-q4_K_M
       api_base: http://192.168.1.17:11434
+      timeout: 5
+
+  # Local ollama container - vision-capable fallback for when 192.168.1.17
+  # is down. Requires `ollama pull llava:7b` on this host.
+  - model_name: llava:7b
+    litellm_params:
+      model: ollama/llava:7b
+      api_base: http://ollama:11434
+
+  # Local ollama container - lightweight text model.
+  - model_name: qwen2.5:3b-instruct
+    litellm_params:
+      model: ollama/qwen2.5:3b-instruct
+      api_base: http://ollama:11434
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY
@@ -18,6 +34,10 @@ general_settings:
 
 litellm_settings:
   callbacks: ["otel", "prometheus"]
+  # If the 192.168.1.17 deployment errors/times out, retry against the local
+  # vision-capable model first, then the local text-only model as last resort.
+  fallbacks:
+    - qwen3-vl:4b-thinking-q4_K_M: ["llava:7b", "qwen3.5-4b-custom"]
   cache: true
   cache_params:
     type: redis
