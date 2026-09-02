@@ -102,6 +102,13 @@ services:
         condition: service_healthy
     environment:
       OLLAMA_BASE_URL: http://ollama:11434
+      # LiteLLM connection, alongside the native Ollama one above, so chat can
+      # use either a directly-pulled Ollama model or anything LiteLLM routes
+      # (caching/fallback/observability) without giving up Ollama model
+      # management (pulling new models still needs the native connection).
+      ENABLE_OPENAI_API: "True"
+      OPENAI_API_BASE_URLS: http://litellm:4000/v1
+      # OPENAI_API_KEYS (the LiteLLM key) lives in openwebui.env, not here.
       ENABLE_WEB_SEARCH: "True"
       WEB_SEARCH_ENGINE: searxng
       SEARXNG_QUERY_URL: http://searxng:8080/search?q=<query>
@@ -166,9 +173,12 @@ services:
       N8N_INSTANCE_AI_SANDBOX_ENABLED: "true"
       N8N_INSTANCE_AI_SANDBOX_PROVIDER: n8n-sandbox
       N8N_SANDBOX_SERVICE_URL: http://n8n-sandbox-api:8080
-      N8N_INSTANCE_AI_MODEL: openai/qwen3.5-4b-custom
-      N8N_INSTANCE_AI_MODEL_URL: http://ollama:11434/v1
-      N8N_INSTANCE_AI_MODEL_API_KEY: ollama
+      # Routed through LiteLLM instead of straight to ollama for its
+      # caching/fallback/observability; model name must match a model_name
+      # in litellm/config.yaml. N8N_INSTANCE_AI_MODEL_API_KEY comes from
+      # n8n.env, not here.
+      N8N_INSTANCE_AI_MODEL: qwen2.5:3b-instruct
+      N8N_INSTANCE_AI_MODEL_URL: http://litellm:4000/v1
       N8N_INSTANCE_AI_SEARXNG_URL: http://searxng:8080
       CREDENTIALS_OVERWRITE_DATA: '{"ollamaApi":{"baseUrl":"http://ollama:11434"}}'
     extra_hosts:
