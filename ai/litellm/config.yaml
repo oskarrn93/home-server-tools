@@ -41,22 +41,24 @@ model_list:
       model: ollama/qwen2.5:3b-instruct
       api_base: http://ollama:11434
 
-  # Remote ollama host (desktop.oskarrosen.io, GPU box) - embedding model used
-  # by paperless-ngx's native AI (semantic search/RAG). Preferred deployment;
-  # falls back to local ollama (see litellm_settings.fallbacks below) if this
-  # host is unreachable. Requires `ollama pull nomic-embed-text` on that host.
+  # Remote ollama host (desktop.oskarrosen.io, GPU box) - multilingual
+  # embedding model (v2-moe, needed for Swedish documents - v1 nomic-embed-text
+  # is English-only) used by paperless-ngx's native AI (semantic search/RAG).
+  # Preferred deployment; falls back to local ollama (see
+  # litellm_settings.fallbacks below) if this host is unreachable. Requires
+  # `ollama pull hf.co/nomic-ai/nomic-embed-text-v2-moe-GGUF:Q8_0` on that host.
   - model_name: nomic-embed-text
     litellm_params:
-      model: ollama/nomic-embed-text
+      model: ollama/hf.co/nomic-ai/nomic-embed-text-v2-moe-GGUF:Q8_0
       api_base: http://desktop.oskarrosen.io:11434
       timeout: 5
 
   # Local ollama container - fallback for nomic-embed-text when
-  # desktop.oskarrosen.io is down. Requires `ollama pull nomic-embed-text` on
-  # this host.
+  # desktop.oskarrosen.io is down. Requires
+  # `ollama pull hf.co/nomic-ai/nomic-embed-text-v2-moe-GGUF:Q8_0` on this host.
   - model_name: nomic-embed-text-local
     litellm_params:
-      model: ollama/nomic-embed-text
+      model: ollama/hf.co/nomic-ai/nomic-embed-text-v2-moe-GGUF:Q8_0
       api_base: http://ollama:11434
 
 general_settings:
