@@ -9,5 +9,24 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.healthcheck.rule=Host(`healthcheck.oskarrosen.io`)"
+      - "traefik.http.routers.healthcheck.entrypoints=web"
+      - "traefik.http.services.healthcheck.loadbalancer.server.port=8080"
+      - "traefik.http.routers.healthcheck-www.rule=Host(`www.oskarrosen.io`)"
+      - "traefik.http.routers.healthcheck-www.entrypoints=web_secure"
+      - "traefik.http.routers.healthcheck-www.service=healthcheck"
+      - "traefik.http.routers.healthcheck-www.tls=true"
+      - "traefik.http.routers.healthcheck-www.tls.certresolver=lets_encrypt"
+      - "traefik.http.routers.healthcheck-www.tls.domains[0].main=*.oskarrosen.io"
+      - "traefik.docker.network=traefik_internal"
+    networks:
+      - default
+      - traefik_internal
     ports:
       - "8086:8080"
+
+networks:
+  traefik_internal:
+    external: true

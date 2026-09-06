@@ -41,18 +41,10 @@ services:
       - "443:443"
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.dashboard.rule=Host(`traefik.local.oskarrosen.io`)"
-      - "traefik.http.routers.dashboard.entrypoints=web_secure"
-      - "traefik.http.routers.dashboard.tls=true"
-      - "traefik.http.routers.dashboard.tls.certresolver=lets_encrypt"
+      - "traefik.http.routers.dashboard.rule=Host(`traefik.oskarrosen.io`)"
+      - "traefik.http.routers.dashboard.entrypoints=web"
       - "traefik.http.routers.dashboard.service=api@internal"
       - "traefik.http.routers.dashboard.middlewares=dashboardauth@file"
-      - "traefik.http.routers.dashboard_public.rule=Host(`traefik.oskarrosen.io`)"
-      - "traefik.http.routers.dashboard_public.entrypoints=web_secure"
-      - "traefik.http.routers.dashboard_public.tls=true"
-      - "traefik.http.routers.dashboard_public.tls.certresolver=lets_encrypt"
-      - "traefik.http.routers.dashboard_public.service=api@internal"
-      - "traefik.http.routers.dashboard_public.middlewares=dashboardauth@file"
 
 volumes:
   plugins-storage:
