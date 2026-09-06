@@ -22,6 +22,8 @@ Public vs. LAN-only is purely a DNS-resolution distinction (see tables below) â€
 | Domain | Service | Repo |
 |---|---|---|
 | `traefik.oskarrosen.io` | Traefik dashboard | `home-server-tools/traefik` |
+| `auth.oskarrosen.io` | Tinyauth (forward-auth gate) | `home-server-tools/auth` |
+| `oidc.oskarrosen.io` | Pocket ID (OIDC provider) | `home-server-tools/auth` |
 | `homepage.oskarrosen.io` | Homepage | `media-services` |
 | `openwebui.oskarrosen.io` | Open WebUI | `home-server-tools/ai` |
 | `portainer.oskarrosen.io` | Portainer | `home-server-tools/portainer` |

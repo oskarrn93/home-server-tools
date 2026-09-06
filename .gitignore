@@ -10,6 +10,7 @@ ai/openwebui.env
 ai/searxng.env
 ai/litellm.env
 traefik/dynamic/dashboard-auth.yml
+auth/.env
 
 # Terraform
 **/.terraform/

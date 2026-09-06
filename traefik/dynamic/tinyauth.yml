@@ -1,0 +1,6 @@
+http:
+  middlewares:
+    tinyauth:
+      forwardAuth:
+        address: "http://tinyauth:3000/api/auth/traefik"
+        trustForwardHeader: true

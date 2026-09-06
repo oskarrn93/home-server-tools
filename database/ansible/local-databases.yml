@@ -333,6 +333,34 @@
         state: present
       become_user: postgres
 
+    - name: Ensure PostgreSQL user exists for Pocket ID
+      community.postgresql.postgresql_user:
+        name: "{{ pocketid_user }}"
+        password: "{{ pocketid_password }}"
+        state: present
+      become_user: postgres
+
+    - name: Ensure PostgreSQL database exists for Pocket ID
+      community.postgresql.postgresql_db:
+        name: "{{ pocketid_db }}"
+        owner: "{{ pocketid_user }}"
+        state: present
+      become_user: postgres
+
+    - name: Ensure PostgreSQL user exists for tinyauth
+      community.postgresql.postgresql_user:
+        name: "{{ tinyauth_user }}"
+        password: "{{ tinyauth_password }}"
+        state: present
+      become_user: postgres
+
+    - name: Ensure PostgreSQL database exists for tinyauth
+      community.postgresql.postgresql_db:
+        name: "{{ tinyauth_db }}"
+        owner: "{{ tinyauth_user }}"
+        state: present
+      become_user: postgres
+
     - name: Ensure MariaDB root password is set
       community.mysql.mysql_user:
         name: "{{ mariadb_root_user }}"
@@ -672,12 +700,16 @@
           - "PostgreSQL (LiteLLM): postgresql://{{ litellm_user }}:{{ litellm_password }}@localhost:5432/{{ litellm_db }}"
           - "Valkey (LiteLLM): valkey://{{ valkey_litellm_user }}:{{ valkey_litellm_password }}@{{ valkey_host }}:{{ valkey_port }}/{{ valkey_litellm_db }}"
           - "PostgreSQL (Seerr): postgresql://{{ seerr_user }}:{{ seerr_password }}@localhost:5432/{{ seerr_db }}"
+          - "PostgreSQL (Pocket ID): postgresql://{{ pocketid_user }}:{{ pocketid_password }}@localhost:5432/{{ pocketid_db }}"
+          - "PostgreSQL (tinyauth): postgresql://{{ tinyauth_user }}:{{ tinyauth_password }}@localhost:5432/{{ tinyauth_db }}"
           - "Put the Grafana lines above into server-observability/terraform.tfvars as postgres_grafana_user/password and mariadb_grafana_user/password."
           - "Put the Immich lines above into media-services/immich.env as DB_HOSTNAME=host.docker.internal/DB_USERNAME/DB_PASSWORD/DB_DATABASE_NAME and REDIS_HOSTNAME=host.docker.internal/REDIS_USERNAME/REDIS_PASSWORD/REDIS_DBINDEX."
           - "Put the Mealie line above into media-services/mealie.env as POSTGRES_SERVER=host.docker.internal/POSTGRES_USER/POSTGRES_PASSWORD/POSTGRES_DB."
           - "Put the Paperless-ngx lines above into media-services/paperless.env as PAPERLESS_DBHOST=host.docker.internal/PAPERLESS_DBUSER/PAPERLESS_DBPASS/PAPERLESS_DBNAME and PAPERLESS_REDIS=redis://<user>:<password>@host.docker.internal:6379/<db>."
           - "Put the LiteLLM lines above into home-server-tools/ai/litellm.env as DATABASE_URL=postgresql://<user>:<password>@host.docker.internal:5432/<db> and REDIS_HOST=host.docker.internal/REDIS_PORT=6379/REDIS_PASSWORD/REDIS_DB."
           - "Put the Seerr line above into media-services/seerr.env as DB_TYPE=postgres, DB_HOST=host.docker.internal, DB_USER, DB_PASS, DB_NAME."
+          - "Put the Pocket ID line above into home-server-tools/auth/.env as DB_CONNECTION_STRING=postgresql://<user>:<password>@host.docker.internal:5432/<db>?sslmode=disable."
+          - "Put the tinyauth line above into home-server-tools/auth/.env as TINYAUTH_DATABASE_DRIVER=postgres and TINYAUTH_DATABASE_PATH=postgresql://<user>:<password>@host.docker.internal:5432/<db>?sslmode=disable."
 
   handlers:
     - name: Restart MariaDB
