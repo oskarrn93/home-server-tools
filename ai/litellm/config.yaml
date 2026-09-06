@@ -65,6 +65,11 @@ general_settings:
 
 litellm_settings:
   callbacks: ["otel", "prometheus"]
+  # Ollama's OpenAI-compat layer rejects params some OpenAI-compatible
+  # clients send by default (e.g. llama_index/paperless-ngx send
+  # encoding_format=base64 for embeddings and parallel_tool_calls for
+  # tool-calling chat) - silently drop unsupported params instead of erroring.
+  drop_params: true
   # If the desktop.oskarrosen.io deployment errors/times out, retry against the local
   # text model first; llava:7b is a last resort since it's only needed for
   # image inputs, which qwen3.5:4b can't handle.
