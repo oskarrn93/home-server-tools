@@ -41,6 +41,24 @@ model_list:
       model: ollama/qwen2.5:3b-instruct
       api_base: http://ollama:11434
 
+  # Remote ollama host (desktop.oskarrosen.io, GPU box) - embedding model used
+  # by paperless-ngx's native AI (semantic search/RAG). Preferred deployment;
+  # falls back to local ollama (see litellm_settings.fallbacks below) if this
+  # host is unreachable. Requires `ollama pull nomic-embed-text` on that host.
+  - model_name: nomic-embed-text
+    litellm_params:
+      model: ollama/nomic-embed-text
+      api_base: http://desktop.oskarrosen.io:11434
+      timeout: 5
+
+  # Local ollama container - fallback for nomic-embed-text when
+  # desktop.oskarrosen.io is down. Requires `ollama pull nomic-embed-text` on
+  # this host.
+  - model_name: nomic-embed-text-local
+    litellm_params:
+      model: ollama/nomic-embed-text
+      api_base: http://ollama:11434
+
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY
   database_url: os.environ/DATABASE_URL
@@ -53,6 +71,7 @@ litellm_settings:
   fallbacks:
     - qwen3-vl:4b-thinking-q4_K_M: ["qwen3.5:4b", "llava:7b"]
     - qwen2.5:3b-instruct: ["qwen2.5:3b-instruct-local"]
+    - nomic-embed-text: ["nomic-embed-text-local"]
   cache: true
   cache_params:
     type: redis
