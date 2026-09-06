@@ -12,5 +12,5 @@ http:
           rules:
             bantime: "3h"
             findtime: "10m"
-            maxretry: 4
+            maxretry: 20
             statuscode: "400,401,403-499"
