@@ -159,6 +159,23 @@
         line: "aclfile /etc/valkey/users.acl"
       notify: Restart Valkey
 
+    # volatile-lru only evicts keys with a TTL set, so Immich's BullMQ job-queue
+    # keys (no TTL) are left alone under memory pressure - only cache-style keys
+    # with a TTL (SearXNG, etc.) get evicted.
+    - name: Cap Valkey memory usage
+      ansible.builtin.lineinfile:
+        path: /etc/valkey/valkey.conf
+        regexp: '^#?\s*maxmemory\s'
+        line: "maxmemory {{ valkey_maxmemory }}"
+      notify: Restart Valkey
+
+    - name: Set the Valkey eviction policy
+      ansible.builtin.lineinfile:
+        path: /etc/valkey/valkey.conf
+        regexp: '^#?\s*maxmemory-policy\s'
+        line: "maxmemory-policy {{ valkey_maxmemory_policy }}"
+      notify: Restart Valkey
+
     - name: Allow Valkey from Docker networks in UFW
       community.general.ufw:
         rule: allow
