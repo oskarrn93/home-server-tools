@@ -3,9 +3,8 @@ services:
     image: traefik:v3.7.12
     container_name: traefik
     restart: unless-stopped
-    command: 
+    command:
       # - "--log.level=DEBUG"
-      - "--api.insecure=true"
       - "--api.dashboard=true"
       - "--metrics.prometheus=true"
       - "--metrics.prometheus.addRoutersLabels=true"
@@ -18,8 +17,8 @@ services:
       - "--experimental.plugins.fail2ban.version=v0.9.0"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.web.http.middlewares=ratelimit@file,fail2ban@file"
-      # - "--entrypoints.web.http.redirections.entrypoint.to=web_secure"
-      # - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--entrypoints.web.http.redirections.entrypoint.to=web_secure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
       - "--entrypoints.web_secure.address=:443"
       - "--entrypoints.web_secure.http.middlewares=ratelimit@file,fail2ban@file"
       - "--certificatesResolvers.lets_encrypt.acme.httpChallenge=true"
@@ -40,7 +39,20 @@ services:
     ports:
       - "80:80"
       - "443:443"
-      - "8081:8080"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dashboard.rule=Host(`traefik.local.oskarrosen.io`)"
+      - "traefik.http.routers.dashboard.entrypoints=web_secure"
+      - "traefik.http.routers.dashboard.tls=true"
+      - "traefik.http.routers.dashboard.tls.certresolver=lets_encrypt"
+      - "traefik.http.routers.dashboard.service=api@internal"
+      - "traefik.http.routers.dashboard.middlewares=dashboardauth@file"
+      - "traefik.http.routers.dashboard_public.rule=Host(`traefik.oskarrosen.io`)"
+      - "traefik.http.routers.dashboard_public.entrypoints=web_secure"
+      - "traefik.http.routers.dashboard_public.tls=true"
+      - "traefik.http.routers.dashboard_public.tls.certresolver=lets_encrypt"
+      - "traefik.http.routers.dashboard_public.service=api@internal"
+      - "traefik.http.routers.dashboard_public.middlewares=dashboardauth@file"
 
 volumes:
   plugins-storage:

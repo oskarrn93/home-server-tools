@@ -1,0 +1,7 @@
+http:
+  middlewares:
+    dashboardauth:
+      basicAuth:
+        # Generate with: openssl rand -base64 24 (password) and openssl passwd -apr1 (hash)
+        users:
+          - "admin:$apr1$REPLACE_WITH_GENERATED_HASH"

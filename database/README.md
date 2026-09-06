@@ -1,10 +1,9 @@
 # Local Database Setup
 
-This directory contains three ways to manage the local database stack:
+This directory contains two ways to manage the local database stack:
 
-- Docker Compose for a local containerized stack
-- Terraform for infrastructure/state management of the Docker-based stack (Uptime Kuma's MariaDB database only, now that Valkey is host-installed)
 - Ansible for installing PostgreSQL, MariaDB, and Valkey directly on the host for easier future upgrades
+- Terraform for infrastructure/state management of the Docker-based stack (Uptime Kuma's MariaDB database only, now that Valkey is host-installed) - there is no Docker Compose stack in this directory; PostgreSQL/MariaDB/Valkey themselves are host-installed via the Ansible playbook below
 
 ## Quick start
 
@@ -12,35 +11,14 @@ From this directory you can use the bundled Makefile:
 
 ```bash
 cd /home/oskar/github/home-server-tools/database
-make docker-up
+make ansible-setup
 ```
 
-To reset the Docker stack completely and start over from scratch:
+To dry-run the playbook without changing anything:
 
 ```bash
 cd /home/oskar/github/home-server-tools/database
-make docker-restart
-```
-
-## Docker Compose
-
-Start the local Docker stack:
-
-```bash
-docker compose up -d
-```
-
-Stop it without deleting data:
-
-```bash
-docker compose down
-```
-
-Delete the containers and persisted volumes and recreate the stack from scratch:
-
-```bash
-docker compose down --volumes --remove-orphans
-docker compose up -d
+make ansible-check
 ```
 
 ## Terraform
@@ -129,10 +107,53 @@ The Ansible playbook defaults to:
 - MariaDB: `mysql://app:changeme@localhost:3307/app`
 - Valkey: `valkey://localhost:6379` (default-user password set via `valkey_root_password`)
 
+## Backups
+
+`backup.sh` dumps the app PostgreSQL database, the app MariaDB database, and a Valkey RDB
+snapshot into timestamped directories under `backups/` (gitignored), keeping only the most
+recent 7 runs.
+
+Setup:
+
+```bash
+cd /home/oskar/github/home-server-tools/database
+cp backup.env.example backup.env
+# edit backup.env with the real app credentials (see "Connection details" above)
+```
+
+Run it manually:
+
+```bash
+cd /home/oskar/github/home-server-tools/database
+make backup
+# or: ./backup.sh
+```
+
+Schedule it with a nightly crontab entry (`crontab -e`):
+
+```
+0 3 * * * /home/oskar/github/home-server-tools/database/backup.sh >> /home/oskar/github/home-server-tools/database/backup.log 2>&1
+```
+
+Note the Valkey RDB copy needs read access to the configured Valkey data directory
+(`/var/lib/valkey` by default) - run the script as root or a user in the `valkey` group if the
+Valkey portion of the backup is silently failing.
+
+### Restoring from a dump
+
+- **PostgreSQL**: `PGPASSWORD=<password> psql -h <host> -p <port> -U <user> -d <db> < backups/<timestamp>/postgres.sql`
+- **MariaDB**: `mysql -h <host> -P <port> -u <user> -p<password> <db> < backups/<timestamp>/mariadb.sql`
+- **Valkey**: stop `valkey-server`, copy `backups/<timestamp>/valkey.rdb` over the file at the
+  configured `dir`/`dbfilename` (check with `valkey-cli CONFIG GET dir` / `CONFIG GET dbfilename`
+  while the server is still running, before stopping it), then start `valkey-server` again.
+
 ## Notes
 
-- The Docker Compose stack in this repo is a good option for quick local testing and isolated services.
-- The Terraform setup now only manages the Docker-based Uptime Kuma database bootstrap (`null_resource.uptime_kuma_database`); Valkey moved to the Ansible/host-installed path alongside Postgres and MariaDB.
+- There is no Docker Compose stack in this directory - PostgreSQL, MariaDB, and Valkey are
+  installed directly on the host by the Ansible playbook.
+- The Terraform setup only manages the Docker-based Uptime Kuma database bootstrap
+  (`null_resource.uptime_kuma_database`); Valkey moved to the Ansible/host-installed path
+  alongside Postgres and MariaDB.
 - The Ansible setup is the preferred local-host approach if the goal is easier future upgrades and direct OS-managed database installs.
 - MariaDB defaults to host port 3307 because a local service is already using 3306 on this machine.
 - For a real production or long-lived server, prefer host-installed databases and package-managed upgrades over container-managed databases unless you specifically need the isolation benefits of containers.

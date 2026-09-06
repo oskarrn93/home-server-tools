@@ -3,14 +3,7 @@ SHELL := /bin/bash
 TF_DIR := terraform
 ANS_DIR := ansible
 
-.PHONY: docker-up docker-restart terraform-init terraform-plan terraform-apply terraform-destroy ansible-setup ansible-check
-
-docker-up:
-	docker compose up -d
-
-docker-restart:
-	docker compose down --volumes --remove-orphans
-	docker compose up -d
+.PHONY: terraform-init terraform-plan terraform-apply terraform-destroy ansible-setup ansible-check backup
 
 terraform-init:
 	cd $(TF_DIR) && terraform init
@@ -30,3 +23,6 @@ ansible-setup:
 
 ansible-check:
 	cd $(ANS_DIR) && ansible-playbook -i inventory.ini local-databases.yml --check
+
+backup:
+	./backup.sh
