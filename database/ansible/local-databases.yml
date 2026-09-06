@@ -102,6 +102,13 @@
         line: "shared_preload_libraries = 'vchord'"
       notify: Restart PostgreSQL
 
+    - name: Kill stuck open transactions after 10 minutes idle
+      ansible.builtin.lineinfile:
+        path: "{{ postgresql_conf_path }}"
+        regexp: '^#?\s*idle_in_transaction_session_timeout\s*='
+        line: "idle_in_transaction_session_timeout = 10min"
+      notify: Restart PostgreSQL
+
     - name: Allow PostgreSQL connections from Docker networks
       community.postgresql.postgresql_pg_hba:
         dest: "{{ postgresql_hba_path }}"
