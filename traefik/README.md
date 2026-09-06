@@ -5,7 +5,9 @@ All services are reachable at a single `*.oskarrosen.io` hostname namespace — 
 - **LAN clients**: the UniFi console at `192.168.1.1` acts as the local DNS server and resolves every `*.oskarrosen.io` name to `192.168.1.12` (this host).
 - **Off-LAN clients**: only a subset of names additionally have a public record in AWS Route53, pointing at the public IP/target that reaches this host. Everything else has no public record and simply won't resolve outside the LAN.
 
-Traefik's router config marks the difference: public hostnames use the `web_secure` entrypoint with `tls=true` / `tls.certresolver=lets_encrypt` (a real Let's Encrypt cert via the `route53` DNS challenge); LAN-only hostnames use the plain `web` entrypoint over HTTP with no TLS.
+Every router — public and LAN-only alike — is declared on both `web` and `web_secure` (`entrypoints=web,web_secure`) with `tls=true` / `tls.certresolver=lets_encrypt`, so all hostnames get the same real Let's Encrypt wildcard cert (`*.oskarrosen.io`, via the `route53` DNS challenge) and work whether a client connects over plain HTTP or HTTPS. This matters because most modern browsers try HTTPS first for typed URLs regardless of what a link says — a LAN-only host with no `web_secure` router would 404 for those clients even though plain `http://` worked. There is no entrypoint-level HTTP→HTTPS redirect (removing one is what motivated always dual-registering routers instead): a global redirect on `web` would send LAN-only hosts to `web_secure` before their own router could even match.
+
+Public vs. LAN-only is purely a DNS-resolution distinction (see tables below) — it has no effect on Traefik's router config anymore.
 
 ## Public (also defined in Route53)
 
@@ -49,6 +51,6 @@ Traefik's router config marks the difference: public hostnames use the `web_secu
 
 ## Adding a new domain
 
-1. Add the paired `traefik.*` labels to the service in its `docker-compose.yml` (see `media-services/.claude/CLAUDE.md` or `home-server-tools/ai/.claude/CLAUDE.md` for the label pattern) — `web` entrypoint only for LAN-only, or `web_secure` + TLS for public.
+1. Add the paired `traefik.*` labels to the service in its `docker-compose.yml` (see `media-services/.claude/CLAUDE.md` or `home-server-tools/ai/.claude/CLAUDE.md` for the label pattern) — always `entrypoints=web,web_secure` with `tls=true` / `tls.certresolver=lets_encrypt`, regardless of whether the host is public or LAN-only.
 2. Add an A record for the new hostname in the UniFi console pointing at `192.168.1.12` so LAN clients can resolve it.
 3. If the service should also be reachable off-LAN, add a matching Route53 record pointing at the public target, and move the entry from the LAN-only table above to the public one.

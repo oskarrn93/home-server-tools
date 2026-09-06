@@ -43,7 +43,9 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.litellm.rule=Host(`litellm.oskarrosen.io`)"
-      - "traefik.http.routers.litellm.entrypoints=web"
+      - "traefik.http.routers.litellm.entrypoints=web,web_secure"
+      - "traefik.http.routers.litellm.tls=true"
+      - "traefik.http.routers.litellm.tls.certresolver=lets_encrypt"
       - "traefik.http.services.litellm.loadbalancer.server.port=4000"
       - "traefik.docker.network=traefik_internal"
     networks:
@@ -86,7 +88,9 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.searxng.rule=Host(`searxng.oskarrosen.io`)"
-      - "traefik.http.routers.searxng.entrypoints=web"
+      - "traefik.http.routers.searxng.entrypoints=web,web_secure"
+      - "traefik.http.routers.searxng.tls=true"
+      - "traefik.http.routers.searxng.tls.certresolver=lets_encrypt"
       - "traefik.http.services.searxng.loadbalancer.server.port=8080"
       - "traefik.http.routers.searxng.service=searxng"
       - "traefik.docker.network=traefik_internal"
@@ -128,7 +132,9 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.openwebui.rule=Host(`openwebui.oskarrosen.io`)"
-      - "traefik.http.routers.openwebui.entrypoints=web"
+      - "traefik.http.routers.openwebui.entrypoints=web,web_secure"
+      - "traefik.http.routers.openwebui.tls=true"
+      - "traefik.http.routers.openwebui.tls.certresolver=lets_encrypt"
       - "traefik.http.services.openwebui.loadbalancer.server.port=8080"
       - "traefik.http.routers.openwebui.service=openwebui"
       - "traefik.docker.network=traefik_internal"
