@@ -51,6 +51,28 @@
         enabled: true
         state: started
 
+    # The packaged postgresql@.service hardcodes `pg_ctlcluster -m fast` for
+    # ExecStop, which aborts in-flight transactions/connections immediately
+    # rather than letting clients finish - every "Restart PostgreSQL" handler
+    # run below then drops every open connection instantly (seen killing
+    # long-running clients like immich-analyze mid-batch). Smart mode instead
+    # waits for clients to disconnect on their own before shutting down.
+    - name: Ensure the PostgreSQL systemd override directory exists
+      ansible.builtin.file:
+        path: "/etc/systemd/system/postgresql@{{ postgresql_version }}-main.service.d"
+        state: directory
+        mode: "0755"
+
+    - name: Use a graceful (smart) shutdown mode for PostgreSQL restarts
+      ansible.builtin.copy:
+        dest: "/etc/systemd/system/postgresql@{{ postgresql_version }}-main.service.d/override.conf"
+        mode: "0644"
+        content: |
+          [Service]
+          ExecStop=
+          ExecStop=/usr/bin/pg_ctlcluster --skip-systemctl-redirect -m smart %i stop
+      notify: Reload systemd daemon
+
     - name: Ensure Valkey is enabled and started
       ansible.builtin.service:
         name: valkey-server
@@ -102,13 +124,15 @@
         line: "shared_preload_libraries = 'vchord'"
       notify: Restart PostgreSQL
 
+    # SIGHUP-level setting - takes effect on reload, no need to drop connections.
     - name: Kill stuck open transactions after 10 minutes idle
       ansible.builtin.lineinfile:
         path: "{{ postgresql_conf_path }}"
         regexp: '^#?\s*idle_in_transaction_session_timeout\s*='
         line: "idle_in_transaction_session_timeout = 10min"
-      notify: Restart PostgreSQL
+      notify: Reload PostgreSQL
 
+    # pg_hba.conf is re-read on reload too - no restart needed.
     - name: Allow PostgreSQL connections from Docker networks
       community.postgresql.postgresql_pg_hba:
         dest: "{{ postgresql_hba_path }}"
@@ -117,7 +141,7 @@
         users: all
         source: "{{ docker_network }}"
         method: scram-sha-256
-      notify: Restart PostgreSQL
+      notify: Reload PostgreSQL
 
     - name: Allow PostgreSQL from Docker networks in UFW
       community.general.ufw:
@@ -719,6 +743,10 @@
           - "Put the tinyauth line above into home-server-tools/auth/.env as TINYAUTH_DATABASE_DRIVER=postgres and TINYAUTH_DATABASE_PATH=postgresql://<user>:<password>@host.docker.internal:5432/<db>?sslmode=disable."
 
   handlers:
+    - name: Reload systemd daemon
+      ansible.builtin.systemd:
+        daemon_reload: true
+
     - name: Restart MariaDB
       ansible.builtin.service:
         name: mariadb
@@ -728,6 +756,11 @@
       ansible.builtin.service:
         name: postgresql
         state: restarted
+
+    - name: Reload PostgreSQL
+      ansible.builtin.service:
+        name: postgresql
+        state: reloaded
 
     - name: Restart Valkey
       ansible.builtin.service:
