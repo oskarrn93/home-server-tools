@@ -110,9 +110,11 @@ The Ansible playbook defaults to:
 ## Backups
 
 `backup-postgres.sh` and `backup-mariadb.sh` each dump their respective app database into
-timestamped directories under `backups/postgres/` and `backups/mariadb/` (both gitignored),
-keeping only the most recent 7 runs per database. They're separate scripts (and separate cron
-jobs, see below) so one database's backup failing doesn't block the other's.
+timestamped directories under `$BACKUP_ROOT/postgres/` and `$BACKUP_ROOT/mariadb/`
+(`BACKUP_ROOT` in `backup.env`, defaults to `./backups` next to the scripts; this host overrides
+it to `/mnt/hdd3/Backup/Database`), keeping only the most recent 7 runs per database. They're
+separate scripts (and separate cron jobs, see below) so one database's backup failing doesn't
+block the other's.
 
 Valkey is intentionally **not** backed up - it only holds cache/queue/broker data for the apps
 here (SearXNG's query cache, Immich's BullMQ job queue, Paperless-ngx's task broker, LiteLLM's
@@ -169,8 +171,8 @@ default) - the pushgateway container just needs to be up (`docker compose up -d 
 
 ### Restoring from a dump
 
-- **PostgreSQL**: `PGPASSWORD=<password> psql -h <host> -p <port> -U <user> -d <db> < backups/postgres/<timestamp>/postgres.sql`
-- **MariaDB**: `mysql -h <host> -P <port> -u <user> -p<password> <db> < backups/mariadb/<timestamp>/mariadb.sql`
+- **PostgreSQL**: `PGPASSWORD=<password> psql -h <host> -p <port> -U <user> -d <db> < $BACKUP_ROOT/postgres/<timestamp>/postgres.sql`
+- **MariaDB**: `mysql -h <host> -P <port> -u <user> -p<password> <db> < $BACKUP_ROOT/mariadb/<timestamp>/mariadb.sql`
 
 ## Notes
 

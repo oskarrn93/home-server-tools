@@ -9,10 +9,11 @@
 #
 # Reads connection details from backup.env (gitignored - copy backup.env.example
 # and fill in the real app credentials). Writes timestamped dumps into
-# backups/mariadb/<timestamp>/ and keeps only the most recent 7 timestamped runs.
+# $BACKUP_ROOT/mariadb/<timestamp>/ (BACKUP_ROOT in backup.env, defaults to
+# ./backups next to this script) and keeps only the most recent 7 timestamped runs.
 #
 # Restore:
-#   mysql -h <host> -P <port> -u <user> -p<password> <db> < backups/mariadb/<ts>/mariadb.sql
+#   mysql -h <host> -P <port> -u <user> -p<password> <db> < $BACKUP_ROOT/mariadb/<ts>/mariadb.sql
 #
 # Alerting: on success, pushes backup_last_success_timestamp_seconds and
 # backup_duration_seconds (labeled database="mariadb") to the Prometheus
@@ -51,7 +52,7 @@ if [[ -z "${MARIADB_USER:-}" ]]; then
 fi
 
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
-BACKUP_ROOT="$SCRIPT_DIR/backups/mariadb"
+BACKUP_ROOT="${BACKUP_ROOT:-$SCRIPT_DIR/backups}/mariadb"
 OUT_DIR="$BACKUP_ROOT/$TIMESTAMP"
 mkdir -p "$OUT_DIR"
 
