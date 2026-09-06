@@ -3,8 +3,12 @@
 Installs and configures PostgreSQL, MariaDB, and Valkey directly on this host, and wires up
 monitoring for them in the sibling `server-observability` repo.
 
-This directory also has `host-tuning.yml`, a small playbook for miscellaneous host-level
-kernel/sysctl tuning unrelated to the databases (see below).
+This directory also has:
+
+- `host-tuning.yml`, a small playbook for miscellaneous host-level kernel/sysctl tuning
+  unrelated to the databases (see below).
+- `backup-cron.yml`, which schedules `../backup-postgres.sh` and `../backup-mariadb.sh` via
+  cron - see `../README.md`'s "Backups" section.
 
 ## Prerequisites
 
@@ -96,4 +100,19 @@ Run it the same way as the database playbook:
 ```bash
 cd /home/oskar/github/home-server-tools/database/ansible
 ansible-playbook host-tuning.yml --ask-become-pass
+```
+
+## Backup scheduling (`backup-cron.yml`)
+
+Installs one cron job per database (`../backup-postgres.sh` at 03:00, `../backup-mariadb.sh` at
+03:10, staggered so they don't contend for I/O at the same instant) for the `oskar` user.
+Requires `../backup.env` to already exist (copy `../backup.env.example` and fill in the real app
+credentials) - this playbook only schedules the scripts, it doesn't configure their credentials.
+Valkey has no backup job - see `../README.md`'s "Backups" section for why.
+
+Run it the same way as the database playbook:
+
+```bash
+cd /home/oskar/github/home-server-tools/database/ansible
+ansible-playbook -i inventory.ini backup-cron.yml --ask-become-pass
 ```

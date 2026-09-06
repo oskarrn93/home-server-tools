@@ -3,7 +3,7 @@ SHELL := /bin/bash
 TF_DIR := terraform
 ANS_DIR := ansible
 
-.PHONY: terraform-init terraform-plan terraform-apply terraform-destroy ansible-setup ansible-check backup
+.PHONY: terraform-init terraform-plan terraform-apply terraform-destroy ansible-setup ansible-check ansible-backup-cron backup-postgres backup-mariadb
 
 terraform-init:
 	cd $(TF_DIR) && terraform init
@@ -24,5 +24,11 @@ ansible-setup:
 ansible-check:
 	cd $(ANS_DIR) && ansible-playbook -i inventory.ini local-databases.yml --check
 
-backup:
-	./backup.sh
+ansible-backup-cron:
+	cd $(ANS_DIR) && ansible-playbook -i inventory.ini backup-cron.yml
+
+backup-postgres:
+	./backup-postgres.sh
+
+backup-mariadb:
+	./backup-mariadb.sh

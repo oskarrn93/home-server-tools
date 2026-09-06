@@ -104,14 +104,20 @@ This playbook will:
 The Ansible playbook defaults to:
 
 - PostgreSQL: `postgresql://app:changeme@localhost:5432/app`
-- MariaDB: `mysql://app:changeme@localhost:3307/app`
+- MariaDB: `mysql://app:changeme@localhost:3306/app`
 - Valkey: `valkey://localhost:6379` (default-user password set via `valkey_root_password`)
 
 ## Backups
 
-`backup.sh` dumps the app PostgreSQL database, the app MariaDB database, and a Valkey RDB
-snapshot into timestamped directories under `backups/` (gitignored), keeping only the most
-recent 7 runs.
+`backup-postgres.sh` and `backup-mariadb.sh` each dump their respective app database into
+timestamped directories under `backups/postgres/` and `backups/mariadb/` (both gitignored),
+keeping only the most recent 7 runs per database. They're separate scripts (and separate cron
+jobs, see below) so one database's backup failing doesn't block the other's.
+
+Valkey is intentionally **not** backed up - it only holds cache/queue/broker data for the apps
+here (SearXNG's query cache, Immich's BullMQ job queue, Paperless-ngx's task broker, LiteLLM's
+response cache), none of which is durable state worth restoring; losing it just means caches
+repopulate and in-flight jobs get re-queued.
 
 Setup:
 
@@ -121,31 +127,50 @@ cp backup.env.example backup.env
 # edit backup.env with the real app credentials (see "Connection details" above)
 ```
 
-Run it manually:
+Run manually:
 
 ```bash
 cd /home/oskar/github/home-server-tools/database
-make backup
-# or: ./backup.sh
+make backup-postgres
+make backup-mariadb
+# or: ./backup-postgres.sh / ./backup-mariadb.sh
 ```
 
-Schedule it with a nightly crontab entry (`crontab -e`):
+Schedule both with the Ansible playbook (installs one cron job per database, staggered 10
+minutes apart):
+
+```bash
+cd /home/oskar/github/home-server-tools/database/ansible
+ansible-playbook -i inventory.ini backup-cron.yml --ask-become-pass
+```
+
+Or by hand via a crontab entry each (`crontab -e`):
 
 ```
-0 3 * * * /home/oskar/github/home-server-tools/database/backup.sh >> /home/oskar/github/home-server-tools/database/backup.log 2>&1
+0 3 * * * /home/oskar/github/home-server-tools/database/backup-postgres.sh >> /home/oskar/github/home-server-tools/database/backup-postgres.log 2>&1
+10 3 * * * /home/oskar/github/home-server-tools/database/backup-mariadb.sh >> /home/oskar/github/home-server-tools/database/backup-mariadb.log 2>&1
 ```
 
-Note the Valkey RDB copy needs read access to the configured Valkey data directory
-(`/var/lib/valkey` by default) - run the script as root or a user in the `valkey` group if the
-Valkey portion of the backup is silently failing.
+### Alerting on failure
+
+Both scripts act as their own dead-man's-switch via Prometheus Pushgateway: on success, each
+pushes `backup_last_success_timestamp_seconds` and `backup_duration_seconds` (labeled
+`database="postgres"`/`"mariadb"`) to `server-observability`'s `pushgateway` container
+(`BACKUP_PUSHGATEWAY_URL` in `backup.env`, defaults to `http://localhost:9092`). A failed dump
+never reaches the push, so the `DatabaseBackupStale` rule in
+`server-observability/prometheus-rules/database-alerts.yaml` - which pages if no successful push
+has landed in over 26h - catches both "the dump failed" and "the cron job stopped running
+entirely" in one check, routed through the same Pushover notification as everything else in
+`server-observability`.
+
+No extra setup is needed beyond `BACKUP_PUSHGATEWAY_URL` in `backup.env` (or leaving it at its
+default) - the pushgateway container just needs to be up (`docker compose up -d pushgateway` in
+`server-observability`).
 
 ### Restoring from a dump
 
-- **PostgreSQL**: `PGPASSWORD=<password> psql -h <host> -p <port> -U <user> -d <db> < backups/<timestamp>/postgres.sql`
-- **MariaDB**: `mysql -h <host> -P <port> -u <user> -p<password> <db> < backups/<timestamp>/mariadb.sql`
-- **Valkey**: stop `valkey-server`, copy `backups/<timestamp>/valkey.rdb` over the file at the
-  configured `dir`/`dbfilename` (check with `valkey-cli CONFIG GET dir` / `CONFIG GET dbfilename`
-  while the server is still running, before stopping it), then start `valkey-server` again.
+- **PostgreSQL**: `PGPASSWORD=<password> psql -h <host> -p <port> -U <user> -d <db> < backups/postgres/<timestamp>/postgres.sql`
+- **MariaDB**: `mysql -h <host> -P <port> -u <user> -p<password> <db> < backups/mariadb/<timestamp>/mariadb.sql`
 
 ## Notes
 
@@ -155,5 +180,4 @@ Valkey portion of the backup is silently failing.
   (`null_resource.uptime_kuma_database`); Valkey moved to the Ansible/host-installed path
   alongside Postgres and MariaDB.
 - The Ansible setup is the preferred local-host approach if the goal is easier future upgrades and direct OS-managed database installs.
-- MariaDB defaults to host port 3307 because a local service is already using 3306 on this machine.
 - For a real production or long-lived server, prefer host-installed databases and package-managed upgrades over container-managed databases unless you specifically need the isolation benefits of containers.

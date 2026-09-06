@@ -1,0 +1,61 @@
+---
+# Schedules the nightly database backups (../backup-postgres.sh,
+# ../backup-mariadb.sh) via cron - one cron job per database, so each backs up
+# and prunes independently and a failure in one doesn't block the other.
+#
+# Valkey is intentionally not backed up: it only holds cache/queue/broker data
+# for the apps here (SearXNG query cache, Immich's BullMQ job queue,
+# Paperless-ngx's task broker, LiteLLM's response cache) - none of it is
+# durable state, so there's nothing worth restoring.
+#
+# Run it the same way as local-databases.yml:
+#   cd /home/oskar/github/home-server-tools/database/ansible
+#   ansible-playbook -i inventory.ini backup-cron.yml --ask-become-pass
+#
+# Prerequisite: database/backup.env must already exist (copy backup.env.example
+# and fill in the real app credentials) - this playbook only schedules the
+# scripts, it doesn't configure their credentials.
+- name: Schedule the database backup scripts via cron
+  hosts: localhost
+  become: true
+  gather_facts: false
+
+  vars:
+    backup_user: oskar
+    backup_dir: /home/oskar/github/home-server-tools/database
+
+  tasks:
+    - name: Ensure backup scripts are executable
+      ansible.builtin.file:
+        path: "{{ backup_dir }}/{{ item }}"
+        mode: "0755"
+      loop:
+        - backup-postgres.sh
+        - backup-mariadb.sh
+
+    - name: Install nightly cron job for the PostgreSQL backup
+      ansible.builtin.cron:
+        name: "database backup - postgres"
+        user: "{{ backup_user }}"
+        minute: "0"
+        hour: "3"
+        job: "{{ backup_dir }}/backup-postgres.sh >> {{ backup_dir }}/backup-postgres.log 2>&1"
+        state: present
+
+    - name: Install nightly cron job for the MariaDB backup
+      ansible.builtin.cron:
+        name: "database backup - mariadb"
+        user: "{{ backup_user }}"
+        minute: "10"
+        hour: "3"
+        job: "{{ backup_dir }}/backup-mariadb.sh >> {{ backup_dir }}/backup-mariadb.log 2>&1"
+        state: present
+
+    - name: Show reminder about backup.env
+      ansible.builtin.debug:
+        msg: >-
+          Cron jobs installed for {{ backup_user }}: postgres at 03:00,
+          mariadb at 03:10 (staggered so they don't contend for I/O at the
+          same instant). Make sure database/backup.env exists (copy
+          backup.env.example and fill in real credentials) - both scripts
+          exit immediately if it's missing.
