@@ -1,40 +1,40 @@
 model_list:
   # Local ollama container (this host, weaker/CPU-only box) - general text
-  # model, fallback for qwen3-vl:4b-thinking-q4_K_M when 192.168.1.17 is down.
+  # model, fallback for qwen3-vl:4b-thinking-q4_K_M when desktop.oskarrosen.io is down.
   - model_name: qwen3.5:4b
     litellm_params:
       model: ollama/qwen3.5:4b
       api_base: http://ollama:11434
 
-  # Remote ollama host (192.168.1.17, GPU box) - vision-capable model used by
+  # Remote ollama host (desktop.oskarrosen.io, GPU box) - vision-capable model used by
   # Immich smart search/analyze and Paperless-AI document tagging. Preferred
   # deployment; falls back to local ollama (see litellm_settings.fallbacks
   # below) if this host is unreachable.
   - model_name: qwen3-vl:4b-thinking-q4_K_M
     litellm_params:
       model: ollama/qwen3-vl:4b-thinking-q4_K_M
-      api_base: http://192.168.1.17:11434
+      api_base: http://desktop.oskarrosen.io:11434
       timeout: 5
 
-  # Local ollama container - vision-capable fallback for when 192.168.1.17
+  # Local ollama container - vision-capable fallback for when desktop.oskarrosen.io
   # is down. Requires `ollama pull llava:7b` on this host.
   - model_name: llava:7b
     litellm_params:
       model: ollama/llava:7b
       api_base: http://ollama:11434
 
-  # Remote ollama host (192.168.1.17, GPU box) - lightweight text model,
+  # Remote ollama host (desktop.oskarrosen.io, GPU box) - lightweight text model,
   # used by n8n's Instance AI. Preferred deployment; falls back to local
   # ollama (see litellm_settings.fallbacks below) if this host is
   # unreachable.
   - model_name: qwen2.5:3b-instruct
     litellm_params:
       model: ollama/qwen2.5:3b-instruct
-      api_base: http://192.168.1.17:11434
+      api_base: http://desktop.oskarrosen.io:11434
       timeout: 5
 
   # Local ollama container - fallback for qwen2.5:3b-instruct when
-  # 192.168.1.17 is down. Requires `ollama pull qwen2.5:3b-instruct` on
+  # desktop.oskarrosen.io is down. Requires `ollama pull qwen2.5:3b-instruct` on
   # this host.
   - model_name: qwen2.5:3b-instruct-local
     litellm_params:
@@ -47,7 +47,7 @@ general_settings:
 
 litellm_settings:
   callbacks: ["otel", "prometheus"]
-  # If the 192.168.1.17 deployment errors/times out, retry against the local
+  # If the desktop.oskarrosen.io deployment errors/times out, retry against the local
   # text model first; llava:7b is a last resort since it's only needed for
   # image inputs, which qwen3.5:4b can't handle.
   fallbacks:
