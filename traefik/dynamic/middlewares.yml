@@ -4,7 +4,7 @@ http:
       rateLimit:
         average: 100
         period: 1s
-        burst: 50
+        burst: 200
 
     fail2ban:
       plugin:
@@ -13,4 +13,4 @@ http:
             bantime: "3h"
             findtime: "10m"
             maxretry: 20
-            statuscode: "400,401,403-499"
+            statuscode: "400,401,403-428,430-498"
