@@ -14,7 +14,7 @@ services:
       - "traefik.http.routers.it-tools.entrypoints=web,web_secure"
       - "traefik.http.routers.it-tools.tls=true"
       - "traefik.http.routers.it-tools.tls.certresolver=lets_encrypt"
-      - "traefik.http.routers.it-tools.middlewares=tinyauth@file"
+      - "traefik.http.routers.it-tools.middlewares=fail2ban-strict@file,fail2ban-404@file,tinyauth@file"
       - "traefik.http.services.it-tools.loadbalancer.server.port=80"
       - "traefik.docker.network=traefik_internal"
     networks:
