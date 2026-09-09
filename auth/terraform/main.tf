@@ -45,6 +45,7 @@ resource "restapi_object" "tinyauth" {
     isGroupRestricted           = true
     accessTokenDurationMinutes  = 60
     refreshTokenDurationMinutes = 43200
+    skipConsent                 = true
   })
 
   # Update DTO has no "id" field; only the create body needs it (and only when
@@ -57,6 +58,7 @@ resource "restapi_object" "tinyauth" {
     isGroupRestricted           = true
     accessTokenDurationMinutes  = 60
     refreshTokenDurationMinutes = 43200
+    skipConsent                 = true
   })
 
   ignore_server_additions = true
@@ -79,6 +81,7 @@ resource "restapi_object" "portainer" {
     isGroupRestricted           = true
     accessTokenDurationMinutes  = 60
     refreshTokenDurationMinutes = 43200
+    skipConsent                 = true
   })
 
   update_data = jsonencode({
@@ -89,6 +92,7 @@ resource "restapi_object" "portainer" {
     isGroupRestricted           = true
     accessTokenDurationMinutes  = 60
     refreshTokenDurationMinutes = 43200
+    skipConsent                 = true
   })
 
   ignore_server_additions = true
@@ -105,6 +109,7 @@ resource "restapi_object" "litellm" {
     isGroupRestricted           = true
     accessTokenDurationMinutes  = 60
     refreshTokenDurationMinutes = 43200
+    skipConsent                 = true
   })
 
   update_data = jsonencode({
@@ -115,6 +120,7 @@ resource "restapi_object" "litellm" {
     isGroupRestricted           = true
     accessTokenDurationMinutes  = 60
     refreshTokenDurationMinutes = 43200
+    skipConsent                 = true
   })
 
   ignore_server_additions = true
@@ -131,6 +137,7 @@ resource "restapi_object" "openwebui" {
     isGroupRestricted           = true
     accessTokenDurationMinutes  = 60
     refreshTokenDurationMinutes = 43200
+    skipConsent                 = true
   })
 
   update_data = jsonencode({
@@ -141,6 +148,63 @@ resource "restapi_object" "openwebui" {
     isGroupRestricted           = true
     accessTokenDurationMinutes  = 60
     refreshTokenDurationMinutes = 43200
+    skipConsent                 = true
+  })
+
+  ignore_server_additions = true
+}
+
+resource "restapi_object" "grafana" {
+  path = "/oidc/clients"
+  data = jsonencode({
+    id                          = "ce33fcb3-05cf-4f7e-a5ef-ddd29b05bbd0"
+    name                        = "Grafana"
+    callbackURLs                = ["https://grafana.oskarrosen.io/login/generic_oauth"]
+    isPublic                    = false
+    pkceEnabled                 = true
+    isGroupRestricted           = true
+    accessTokenDurationMinutes  = 60
+    refreshTokenDurationMinutes = 43200
+    skipConsent                 = true
+  })
+
+  update_data = jsonencode({
+    name                        = "Grafana"
+    callbackURLs                = ["https://grafana.oskarrosen.io/login/generic_oauth"]
+    isPublic                    = false
+    pkceEnabled                 = true
+    isGroupRestricted           = true
+    accessTokenDurationMinutes  = 60
+    refreshTokenDurationMinutes = 43200
+    skipConsent                 = true
+  })
+
+  ignore_server_additions = true
+}
+
+resource "restapi_object" "pgadmin" {
+  path = "/oidc/clients"
+  data = jsonencode({
+    id                          = "c54ae573-bd82-40f7-8a1f-1493c15d1ea3"
+    name                        = "pgAdmin"
+    callbackURLs                = ["https://pgadmin.oskarrosen.io/oauth2/authorize"]
+    isPublic                    = false
+    pkceEnabled                 = true
+    isGroupRestricted           = true
+    accessTokenDurationMinutes  = 60
+    refreshTokenDurationMinutes = 43200
+    skipConsent                 = true
+  })
+
+  update_data = jsonencode({
+    name                        = "pgAdmin"
+    callbackURLs                = ["https://pgadmin.oskarrosen.io/oauth2/authorize"]
+    isPublic                    = false
+    pkceEnabled                 = true
+    isGroupRestricted           = true
+    accessTokenDurationMinutes  = 60
+    refreshTokenDurationMinutes = 43200
+    skipConsent                 = true
   })
 
   ignore_server_additions = true
@@ -160,6 +224,8 @@ locals {
     portainer = restapi_object.portainer.id
     litellm   = restapi_object.litellm.id
     openwebui = restapi_object.openwebui.id
+    grafana   = restapi_object.grafana.id
+    pgadmin   = restapi_object.pgadmin.id
   }
 }
 
