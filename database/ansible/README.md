@@ -59,6 +59,9 @@ an agent without a TTY), since `--ask-become-pass` needs a password typed at the
 - Creates read-only monitoring users for Prometheus (`postgres_exporter`, `mysqld_exporter`,
   a Valkey ACL user) and `grafana` users (Postgres: `pg_read_all_data`; MariaDB: global `SELECT`)
   used by the dashboards/data sources in `server-observability`.
+- Creates a personal PostgreSQL superuser for Oskar (`postgres_admin_user`, default `oskar`) with
+  `CREATEDB,SUPERUSER`, used to log into pgAdmin (`home-server-tools/pgadmin`) and see/administer
+  every database on the instance.
 - Creates the Valkey ACL user for SearXNG (`searxng`, using db 1 the same way).
 - Configures a Valkey `aclfile` (`/etc/valkey/users.acl`) so ACL users created above survive a
   Valkey restart/reboot instead of only living in memory.

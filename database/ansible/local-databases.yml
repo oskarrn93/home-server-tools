@@ -246,6 +246,14 @@
       become_user: postgres
       when: postgres_root_password is defined and postgres_root_password | length > 0
 
+    - name: Ensure PostgreSQL admin user exists for Oskar (pgAdmin login)
+      community.postgresql.postgresql_user:
+        name: "{{ postgres_admin_user }}"
+        password: "{{ postgres_admin_password }}"
+        role_attr_flags: CREATEDB,SUPERUSER
+        state: present
+      become_user: postgres
+
     - name: Ensure PostgreSQL exporter user exists
       community.postgresql.postgresql_user:
         name: "{{ postgres_exporter_user }}"
@@ -719,6 +727,7 @@
       ansible.builtin.debug:
         msg:
           - "PostgreSQL: postgresql://{{ postgres_user }}:{{ postgres_password }}@localhost:5432/{{ postgres_db }}"
+          - "PostgreSQL (Oskar/pgAdmin): postgresql://{{ postgres_admin_user }}:{{ postgres_admin_password }}@localhost:5432/{{ postgres_db }}"
           - "PostgreSQL (Grafana): postgresql://{{ postgres_grafana_user }}:{{ postgres_grafana_password }}@localhost:5432/{{ postgres_db }}"
           - "MariaDB: mysql://{{ mariadb_user }}:{{ mariadb_password }}@localhost:3306/{{ mariadb_database }}"
           - "MariaDB (Grafana): mysql://{{ mariadb_grafana_user }}:{{ mariadb_grafana_password }}@localhost:3306/mysql"
@@ -741,6 +750,7 @@
           - "Put the Seerr line above into media-services/seerr.env as DB_TYPE=postgres, DB_HOST=host.docker.internal, DB_USER, DB_PASS, DB_NAME."
           - "Put the Pocket ID line above into home-server-tools/auth/.env as DB_CONNECTION_STRING=postgresql://<user>:<password>@host.docker.internal:5432/<db>?sslmode=disable."
           - "Put the tinyauth line above into home-server-tools/auth/.env as TINYAUTH_DATABASE_DRIVER=postgres and TINYAUTH_DATABASE_PATH=postgresql://<user>:<password>@host.docker.internal:5432/<db>?sslmode=disable."
+          - "The Oskar/pgAdmin user's password is entered by hand at first pgAdmin login (see home-server-tools/pgadmin/README.md) - it isn't written to any .env file."
 
   handlers:
     - name: Reload systemd daemon

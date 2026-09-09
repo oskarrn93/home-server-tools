@@ -1,0 +1,15 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "Home Server (host PostgreSQL)",
+      "Group": "Servers",
+      "Host": "host.docker.internal",
+      "Port": 5432,
+      "MaintenanceDB": "postgres",
+      "Username": "oskar",
+      "SSLMode": "disable",
+      "Shared": true,
+      "Comment": "All app databases live on this one instance - see database/ansible/vars/local-databases.yml"
+    }
+  }
+}
