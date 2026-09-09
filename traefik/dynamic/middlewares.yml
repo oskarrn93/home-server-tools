@@ -9,6 +9,9 @@ http:
     fail2ban:
       plugin:
         fail2ban:
+          allowlist:
+            ip:
+              - "192.168.1.0/24"
           rules:
             bantime: "3h"
             findtime: "10m"
