@@ -1,0 +1,129 @@
+{
+  "name": "Disk Space Watchdog",
+  "settings": {},
+  "nodes": [
+    {
+      "id": "trigger",
+      "name": "Every Hour",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0],
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "hours", "hoursInterval": 1 }]
+        }
+      }
+    },
+    {
+      "id": "sonarr-diskspace",
+      "name": "Sonarr Diskspace (hdd1)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, -100],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const baseUrl = $env.SONARR_URL;\nconst apiKey = $env.SONARR_API_KEY;\n\nconst volumes = await this.helpers.httpRequest({\n  method: 'GET',\n  url: `${baseUrl}/api/v3/diskspace`,\n  qs: { apikey: apiKey },\n  json: true,\n});\n\nreturn volumes.map((v) => ({\n  json: {\n    label: `hdd1 (${v.path})`,\n    freeBytes: v.freeSpace,\n    totalBytes: v.totalSpace,\n  },\n  pairedItem: { item: 0 },\n}));"
+      }
+    },
+    {
+      "id": "radarr-diskspace",
+      "name": "Radarr Diskspace (hdd1)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 0],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const baseUrl = $env.RADARR_URL;\nconst apiKey = $env.RADARR_API_KEY;\n\nconst volumes = await this.helpers.httpRequest({\n  method: 'GET',\n  url: `${baseUrl}/api/v3/diskspace`,\n  qs: { apikey: apiKey },\n  json: true,\n});\n\nreturn volumes.map((v) => ({\n  json: {\n    label: `hdd1 (${v.path})`,\n    freeBytes: v.freeSpace,\n    totalBytes: v.totalSpace,\n  },\n  pairedItem: { item: 0 },\n}));"
+      }
+    },
+    {
+      "id": "readarr-diskspace",
+      "name": "Readarr Diskspace (hdd3)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 100],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const baseUrl = $env.READARR_URL;\nconst apiKey = $env.READARR_API_KEY;\n\nconst volumes = await this.helpers.httpRequest({\n  method: 'GET',\n  url: `${baseUrl}/api/v1/diskspace`,\n  qs: { apikey: apiKey },\n  json: true,\n});\n\nreturn volumes.map((v) => ({\n  json: {\n    label: `hdd3 (${v.path})`,\n    freeBytes: v.freeSpace,\n    totalBytes: v.totalSpace,\n  },\n  pairedItem: { item: 0 },\n}));"
+      }
+    },
+    {
+      "id": "merge-diskspace",
+      "name": "Merge Diskspace",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [440, 0],
+      "parameters": {
+        "mode": "append",
+        "numberInputs": 3
+      }
+    },
+    {
+      "id": "evaluate",
+      "name": "Evaluate Thresholds",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, 0],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const items = $input.all();\nconst thresholdGb = Number($env.DISK_FREE_THRESHOLD_GB) || 50;\nconst thresholdBytes = thresholdGb * 1024 ** 3;\n\n// Multiple root folders can share one physical volume (e.g. /tv and\n// /movies both live on hdd1) - de-dupe by free/total byte counts so the\n// alert doesn't repeat the same volume under every root folder label.\nconst seen = new Map();\nfor (const { json } of items) {\n  const key = `${json.freeBytes}:${json.totalBytes}`;\n  if (!seen.has(key)) seen.set(key, json);\n}\n\nconst low = [...seen.values()].filter((v) => v.freeBytes < thresholdBytes);\nconst toGb = (b) => (b / 1024 ** 3).toFixed(1);\n\nreturn [{\n  json: {\n    lowCount: low.length,\n    message: low\n      .map((v) => `${v.label}: ${toGb(v.freeBytes)} GB free (threshold ${thresholdGb} GB)`)\n      .join('\\n'),\n  },\n  pairedItem: { item: 0 },\n}];"
+      }
+    },
+    {
+      "id": "is-low",
+      "name": "Below Threshold",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [880, 0],
+      "parameters": {
+        "conditions": {
+          "number": [{ "value1": "={{$json.lowCount}}", "operation": "larger", "value2": 0 }]
+        }
+      }
+    },
+    {
+      "id": "notify",
+      "name": "Notify",
+      "type": "n8n-nodes-base.pushover",
+      "typeVersion": 1,
+      "position": [1100, 0],
+      "parameters": {
+        "userKey": "__PUSHOVER_USER_KEY__",
+        "title": "Disk Space Low",
+        "message": "={{$json.message}}",
+        "additionalFields": { "priority": 1 }
+      },
+      "credentials": {
+        "pushoverApi": { "id": "__PUSHOVER_CREDENTIAL_ID__", "name": "Pushover account" }
+      }
+    }
+  ],
+  "connections": {
+    "Every Hour": {
+      "main": [[
+        { "node": "Sonarr Diskspace (hdd1)", "type": "main", "index": 0 },
+        { "node": "Radarr Diskspace (hdd1)", "type": "main", "index": 0 },
+        { "node": "Readarr Diskspace (hdd3)", "type": "main", "index": 0 }
+      ]]
+    },
+    "Sonarr Diskspace (hdd1)": {
+      "main": [[{ "node": "Merge Diskspace", "type": "main", "index": 0 }]]
+    },
+    "Radarr Diskspace (hdd1)": {
+      "main": [[{ "node": "Merge Diskspace", "type": "main", "index": 1 }]]
+    },
+    "Readarr Diskspace (hdd3)": {
+      "main": [[{ "node": "Merge Diskspace", "type": "main", "index": 2 }]]
+    },
+    "Merge Diskspace": {
+      "main": [[{ "node": "Evaluate Thresholds", "type": "main", "index": 0 }]]
+    },
+    "Evaluate Thresholds": {
+      "main": [[{ "node": "Below Threshold", "type": "main", "index": 0 }]]
+    },
+    "Below Threshold": {
+      "main": [[{ "node": "Notify", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {}
+}

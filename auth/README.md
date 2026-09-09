@@ -24,7 +24,7 @@ Self-hosted SSO for 1-3 users: **Pocket ID** (passkey-based OIDC provider, admin
 ## How it's wired to Traefik
 
 - `home-server-tools/traefik/dynamic/tinyauth.yml` defines the `tinyauth` middleware (Traefik file provider) as a `forwardAuth` pointing at `http://tinyauth:3000/api/auth/traefik`. Both containers here join the external `traefik_internal` network, same as Traefik, so the hostname resolves.
-- Any router that should be gated gets `traefik.http.routers.<name>.middlewares=tinyauth@file` added to its labels (the `@file` suffix is required since the middleware is defined via the file provider, not Docker labels). Currently applied to `qbittorrent`, `sabnzbd`, `sonarr`, `radarr`, `prowlarr` in `media-services/docker-compose.yml`.
+- Any router that should be gated gets `traefik.http.routers.<name>.middlewares=tinyauth@file` added to its labels (the `@file` suffix is required since the middleware is defined via the file provider, not Docker labels). Currently applied to `qbittorrent`, `sabnzbd`, `sonarr`, `radarr`, `readarr`, `prowlarr` in `media-services/docker-compose.yml`.
 - `TINYAUTH_OAUTH_AUTOREDIRECT=pocketid` skips tinyauth's own login form and sends the browser straight to Pocket ID's passkey login.
 
 ## Native OIDC apps

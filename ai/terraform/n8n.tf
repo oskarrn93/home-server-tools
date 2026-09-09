@@ -52,6 +52,7 @@ locals {
     download_cleanup      = "download-cleanup.json"
     seerr_request_digest  = "seerr-request-digest.json"
     tautulli_watch_digest = "tautulli-watch-digest.json"
+    disk_space_watchdog   = "disk-space-watchdog.json"
   }
 }
 
