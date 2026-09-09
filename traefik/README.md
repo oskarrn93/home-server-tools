@@ -17,14 +17,15 @@ Public vs. LAN-only is purely a DNS-resolution distinction (see tables below) â€
 | `iptv.oskarrosen.io` | iptv-proxy-go | `media-services` |
 | `n8n.oskarrosen.io` | n8n | `home-server-tools/ai` |
 | `www.oskarrosen.io` | healthcheck | `home-server-tools/healthcheck` |
+| `it-tools.oskarrosen.io` | IT Tools | `home-server-tools/it-tools` |
+| `auth.oskarrosen.io` | Tinyauth (forward-auth gate) | `home-server-tools/auth` |
+| `oidc.oskarrosen.io` | Pocket ID (OIDC provider) | `home-server-tools/auth` |
 
 ## LAN-only (defined only in UniFi's local DNS, resolves to 192.168.1.12)
 
 | Domain | Service | Repo |
 |---|---|---|
 | `traefik.oskarrosen.io` | Traefik dashboard | `home-server-tools/traefik` |
-| `auth.oskarrosen.io` | Tinyauth (forward-auth gate) | `home-server-tools/auth` |
-| `oidc.oskarrosen.io` | Pocket ID (OIDC provider) | `home-server-tools/auth` |
 | `homepage.oskarrosen.io` | Homepage | `media-services` |
 | `openwebui.oskarrosen.io` | Open WebUI | `home-server-tools/ai` |
 | `portainer.oskarrosen.io` | Portainer | `home-server-tools/portainer` |
@@ -51,7 +52,6 @@ Public vs. LAN-only is purely a DNS-resolution distinction (see tables below) â€
 | `litellm.oskarrosen.io` | LiteLLM | `home-server-tools/ai` |
 | `openspeedtest.oskarrosen.io` | OpenSpeedTest | `home-server-tools/openspeedtest` |
 | `healthcheck.oskarrosen.io` | healthcheck | `home-server-tools/healthcheck` |
-| `it-tools.oskarrosen.io` | IT Tools | `home-server-tools/it-tools` |
 
 ## Adding a new domain
 
