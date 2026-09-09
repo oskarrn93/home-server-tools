@@ -1,0 +1,26 @@
+services:
+  it-tools:
+    image: corentinth/it-tools:2024.10.22-7ca5933
+    container_name: it-tools
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:80/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.it-tools.rule=Host(`it-tools.oskarrosen.io`)"
+      - "traefik.http.routers.it-tools.entrypoints=web,web_secure"
+      - "traefik.http.routers.it-tools.tls=true"
+      - "traefik.http.routers.it-tools.tls.certresolver=lets_encrypt"
+      - "traefik.http.routers.it-tools.middlewares=tinyauth@file"
+      - "traefik.http.services.it-tools.loadbalancer.server.port=80"
+      - "traefik.docker.network=traefik_internal"
+    networks:
+      - default
+      - traefik_internal
+
+networks:
+  traefik_internal:
+    external: true

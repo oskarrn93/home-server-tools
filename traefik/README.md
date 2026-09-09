@@ -51,6 +51,7 @@ Public vs. LAN-only is purely a DNS-resolution distinction (see tables below) â€
 | `litellm.oskarrosen.io` | LiteLLM | `home-server-tools/ai` |
 | `openspeedtest.oskarrosen.io` | OpenSpeedTest | `home-server-tools/openspeedtest` |
 | `healthcheck.oskarrosen.io` | healthcheck | `home-server-tools/healthcheck` |
+| `it-tools.oskarrosen.io` | IT Tools | `home-server-tools/it-tools` |
 
 ## Adding a new domain
 
