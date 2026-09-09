@@ -14,6 +14,7 @@ Public vs. LAN-only is purely a DNS-resolution distinction (see tables below) â€
 | Domain | Service | Repo |
 |---|---|---|
 | `seerr.oskarrosen.io` | Seerr (media requests) | `media-services` |
+| `iptv.oskarrosen.io` | iptv-proxy-go | `media-services` |
 | `n8n.oskarrosen.io` | n8n | `home-server-tools/ai` |
 | `www.oskarrosen.io` | healthcheck | `home-server-tools/healthcheck` |
 
