@@ -12,6 +12,9 @@ ai/litellm.env
 traefik/dynamic/dashboard-auth.yml
 auth/.env
 
+backup-mariadb.log
+backup-postgres.log
+
 # Terraform
 **/.terraform/
 **/.terraform.lock.hcl
