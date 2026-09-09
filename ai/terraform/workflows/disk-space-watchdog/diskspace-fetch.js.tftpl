@@ -1,0 +1,29 @@
+// Shared logic for the ${service} diskspace node - see
+// terraform/n8n.tf for the per-*arr instantiation (service/URL/API path/label).
+const baseUrl = $env.${env_url};
+const apiKey = $env.${env_key};
+
+let volumes;
+try {
+  volumes = await this.helpers.httpRequest({
+    method: 'GET',
+    url: `$${baseUrl}${api_path}`,
+    qs: { apikey: apiKey },
+    json: true,
+    timeout: 10000,
+  });
+} catch (err) {
+  // The JS task runner loses the real error (Axios errors don't survive
+  // the RPC boundary) and surfaces a bare "Unknown error" instead - rethrow
+  // a plain string-message Error so the actual cause shows up in the UI.
+  throw new Error(`${service} diskspace request to $${baseUrl} failed: $${err.message || err}`);
+}
+
+return volumes.map((v) => ({
+  json: {
+    label: `${label} ($${v.path})`,
+    freeBytes: v.freeSpace,
+    totalBytes: v.totalSpace,
+  },
+  pairedItem: { item: 0 },
+}));

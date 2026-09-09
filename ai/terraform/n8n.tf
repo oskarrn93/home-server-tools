@@ -48,21 +48,51 @@ resource "restapi_object" "pushover_credential" {
 }
 
 locals {
-  workflow_files = {
-    download_cleanup      = "download-cleanup.json"
-    seerr_request_digest  = "seerr-request-digest.json"
-    tautulli_watch_digest = "tautulli-watch-digest.json"
-    disk_space_watchdog   = "disk-space-watchdog.json"
+  # The three *arr diskspace nodes share one fetch-and-map shape, so their code
+  # lives in a single parameterized template (see workflows/disk-space-watchdog/)
+  # rather than duplicated per node or inlined in the workflow JSON.
+  disk_space_watchdog_fetch = "${path.module}/workflows/disk-space-watchdog/diskspace-fetch.js.tftpl"
+
+  disk_space_watchdog_json = templatefile("${path.module}/workflows/disk-space-watchdog/workflow.json.tftpl", {
+    sonarr_js = templatefile(local.disk_space_watchdog_fetch, {
+      service  = "Sonarr"
+      env_url  = "SONARR_URL"
+      env_key  = "SONARR_API_KEY"
+      api_path = "/api/v3/diskspace"
+      label    = "hdd1"
+    })
+    radarr_js = templatefile(local.disk_space_watchdog_fetch, {
+      service  = "Radarr"
+      env_url  = "RADARR_URL"
+      env_key  = "RADARR_API_KEY"
+      api_path = "/api/v3/diskspace"
+      label    = "hdd1"
+    })
+    readarr_js = templatefile(local.disk_space_watchdog_fetch, {
+      service  = "Readarr"
+      env_url  = "READARR_URL"
+      env_key  = "READARR_API_KEY"
+      api_path = "/api/v1/diskspace"
+      label    = "hdd3"
+    })
+    evaluate_js = file("${path.module}/workflows/disk-space-watchdog/evaluate-thresholds.js")
+  })
+
+  workflow_json = {
+    download_cleanup      = file("${path.module}/workflows/download-cleanup.json")
+    seerr_request_digest  = file("${path.module}/workflows/seerr-request-digest.json")
+    tautulli_watch_digest = file("${path.module}/workflows/tautulli-watch-digest.json")
+    disk_space_watchdog   = local.disk_space_watchdog_json
   }
 }
 
 resource "restapi_object" "workflows" {
-  for_each = local.workflow_files
+  for_each = local.workflow_json
 
   path = "/api/v1/workflows"
   data = replace(
     replace(
-      file("${path.module}/workflows/${each.value}"),
+      each.value,
       "__PUSHOVER_CREDENTIAL_ID__",
       restapi_object.pushover_credential.id
     ),

@@ -22,7 +22,7 @@
       "position": [220, -100],
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const baseUrl = $env.SONARR_URL;\nconst apiKey = $env.SONARR_API_KEY;\n\nconst volumes = await this.helpers.httpRequest({\n  method: 'GET',\n  url: `${baseUrl}/api/v3/diskspace`,\n  qs: { apikey: apiKey },\n  json: true,\n});\n\nreturn volumes.map((v) => ({\n  json: {\n    label: `hdd1 (${v.path})`,\n    freeBytes: v.freeSpace,\n    totalBytes: v.totalSpace,\n  },\n  pairedItem: { item: 0 },\n}));"
+        "jsCode": ${jsonencode(sonarr_js)}
       }
     },
     {
@@ -33,7 +33,7 @@
       "position": [220, 0],
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const baseUrl = $env.RADARR_URL;\nconst apiKey = $env.RADARR_API_KEY;\n\nconst volumes = await this.helpers.httpRequest({\n  method: 'GET',\n  url: `${baseUrl}/api/v3/diskspace`,\n  qs: { apikey: apiKey },\n  json: true,\n});\n\nreturn volumes.map((v) => ({\n  json: {\n    label: `hdd1 (${v.path})`,\n    freeBytes: v.freeSpace,\n    totalBytes: v.totalSpace,\n  },\n  pairedItem: { item: 0 },\n}));"
+        "jsCode": ${jsonencode(radarr_js)}
       }
     },
     {
@@ -44,7 +44,7 @@
       "position": [220, 100],
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const baseUrl = $env.READARR_URL;\nconst apiKey = $env.READARR_API_KEY;\n\nconst volumes = await this.helpers.httpRequest({\n  method: 'GET',\n  url: `${baseUrl}/api/v1/diskspace`,\n  qs: { apikey: apiKey },\n  json: true,\n});\n\nreturn volumes.map((v) => ({\n  json: {\n    label: `hdd3 (${v.path})`,\n    freeBytes: v.freeSpace,\n    totalBytes: v.totalSpace,\n  },\n  pairedItem: { item: 0 },\n}));"
+        "jsCode": ${jsonencode(readarr_js)}
       }
     },
     {
@@ -66,7 +66,7 @@
       "position": [660, 0],
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const items = $input.all();\nconst thresholdGb = Number($env.DISK_FREE_THRESHOLD_GB) || 50;\nconst thresholdBytes = thresholdGb * 1024 ** 3;\n\n// Multiple root folders can share one physical volume (e.g. /tv and\n// /movies both live on hdd1) - de-dupe by free/total byte counts so the\n// alert doesn't repeat the same volume under every root folder label.\nconst seen = new Map();\nfor (const { json } of items) {\n  const key = `${json.freeBytes}:${json.totalBytes}`;\n  if (!seen.has(key)) seen.set(key, json);\n}\n\nconst low = [...seen.values()].filter((v) => v.freeBytes < thresholdBytes);\nconst toGb = (b) => (b / 1024 ** 3).toFixed(1);\n\nreturn [{\n  json: {\n    lowCount: low.length,\n    message: low\n      .map((v) => `${v.label}: ${toGb(v.freeBytes)} GB free (threshold ${thresholdGb} GB)`)\n      .join('\\n'),\n  },\n  pairedItem: { item: 0 },\n}];"
+        "jsCode": ${jsonencode(evaluate_js)}
       }
     },
     {
