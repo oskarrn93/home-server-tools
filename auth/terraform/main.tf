@@ -32,182 +32,103 @@ provider "restapi" {
 }
 
 # OIDC clients created here still need a secret generated once via the Pocket ID
-# admin UI or API (POST /oidc/clients/{id}/secrets) — secrets are a separate,
+# admin UI or API (POST /oidc/clients/{id}/secrets) - secrets are a separate,
 # write-once sub-resource that Terraform doesn't manage.
-resource "restapi_object" "tinyauth" {
-  path = "/oidc/clients"
-  data = jsonencode({
-    id                          = "e186c93c-44ba-489e-9cce-304c7a6e4d82"
-    name                        = "Tinyauth"
-    callbackURLs                = ["https://auth.oskarrosen.io/api/oauth/callback/pocketid"]
-    isPublic                    = false
-    pkceEnabled                 = true
-    isGroupRestricted           = true
-    accessTokenDurationMinutes  = 60
-    refreshTokenDurationMinutes = 43200
-    skipConsent                 = true
-  })
+locals {
+  oidc_clients = {
+    tinyauth = {
+      id           = "e186c93c-44ba-489e-9cce-304c7a6e4d82"
+      name         = "Tinyauth"
+      callback_url = "https://auth.oskarrosen.io/api/oauth/callback/pocketid"
+    }
+    portainer = {
+      id   = "6f3a9e2b-4c15-4a8d-9e6c-2a1f7b5d8c30"
+      name = "Portainer"
+      # Portainer's OAuth redirect is its own base URL, without a trailing
+      # slash - matches the redirect_uri it actually sends (verified via
+      # /api/settings/public's OAuthLoginURI), not a dedicated callback path.
+      callback_url = "https://portainer.oskarrosen.io"
+      # Portainer CE 2.45 doesn't implement PKCE for its OAuth client (verified
+      # via strings on the portainer binary - no code_challenge support), so a
+      # PKCE-required client here just makes Pocket ID reject its auth requests.
+      pkce = false
+    }
+    litellm = {
+      id           = "9d4c1a7e-3f28-4b6a-a1d5-6e0b2c9f4a17"
+      name         = "LiteLLM"
+      callback_url = "https://litellm.oskarrosen.io/sso/callback"
+    }
+    openwebui = {
+      id           = "1b8e5f3a-7c94-4d21-8a6f-3d5c9e1b4a72"
+      name         = "Open WebUI"
+      callback_url = "https://openwebui.oskarrosen.io/oauth/oidc/callback"
+    }
+    grafana = {
+      id           = "ce33fcb3-05cf-4f7e-a5ef-ddd29b05bbd0"
+      name         = "Grafana"
+      callback_url = "https://grafana.oskarrosen.io/login/generic_oauth"
+    }
+    pgadmin = {
+      id           = "c54ae573-bd82-40f7-8a1f-1493c15d1ea3"
+      name         = "pgAdmin"
+      callback_url = "https://pgadmin.oskarrosen.io/oauth2/authorize"
+    }
+  }
 
   # Update DTO has no "id" field; only the create body needs it (and only when
-  # this resource is actually created rather than imported).
-  update_data = jsonencode({
-    name                        = "Tinyauth"
-    callbackURLs                = ["https://auth.oskarrosen.io/api/oauth/callback/pocketid"]
-    isPublic                    = false
-    pkceEnabled                 = true
-    isGroupRestricted           = true
-    accessTokenDurationMinutes  = 60
-    refreshTokenDurationMinutes = 43200
-    skipConsent                 = true
-  })
+  # a client is actually created rather than imported).
+  oidc_client_settings = {
+    for key, client in local.oidc_clients : key => {
+      name                        = client.name
+      callbackURLs                = [client.callback_url]
+      isPublic                    = false
+      pkceEnabled                 = try(client.pkce, true)
+      isGroupRestricted           = true
+      accessTokenDurationMinutes  = 60
+      refreshTokenDurationMinutes = 43200
+      skipConsent                 = true
+    }
+  }
+}
+
+resource "restapi_object" "oidc_clients" {
+  for_each = local.oidc_clients
+
+  path        = "/oidc/clients"
+  data        = jsonencode(merge({ id = each.value.id }, local.oidc_client_settings[each.key]))
+  update_data = jsonencode(local.oidc_client_settings[each.key])
 
   ignore_server_additions = true
 }
 
-resource "restapi_object" "portainer" {
-  path = "/oidc/clients"
-  data = jsonencode({
-    id   = "6f3a9e2b-4c15-4a8d-9e6c-2a1f7b5d8c30"
-    name = "Portainer"
-    # Portainer's OAuth redirect is its own base URL, without a trailing
-    # slash - matches the redirect_uri it actually sends (verified via
-    # /api/settings/public's OAuthLoginURI), not a dedicated callback path.
-    callbackURLs                = ["https://portainer.oskarrosen.io"]
-    isPublic                    = false
-    # Portainer CE 2.45 doesn't implement PKCE for its OAuth client (verified
-    # via strings on the portainer binary - no code_challenge support), so a
-    # PKCE-required client here just makes Pocket ID reject its auth requests.
-    pkceEnabled                 = false
-    isGroupRestricted           = true
-    accessTokenDurationMinutes  = 60
-    refreshTokenDurationMinutes = 43200
-    skipConsent                 = true
-  })
-
-  update_data = jsonencode({
-    name                        = "Portainer"
-    callbackURLs                = ["https://portainer.oskarrosen.io"]
-    isPublic                    = false
-    pkceEnabled                 = false
-    isGroupRestricted           = true
-    accessTokenDurationMinutes  = 60
-    refreshTokenDurationMinutes = 43200
-    skipConsent                 = true
-  })
-
-  ignore_server_additions = true
+moved {
+  from = restapi_object.tinyauth
+  to   = restapi_object.oidc_clients["tinyauth"]
 }
 
-resource "restapi_object" "litellm" {
-  path = "/oidc/clients"
-  data = jsonencode({
-    id                          = "9d4c1a7e-3f28-4b6a-a1d5-6e0b2c9f4a17"
-    name                        = "LiteLLM"
-    callbackURLs                = ["https://litellm.oskarrosen.io/sso/callback"]
-    isPublic                    = false
-    pkceEnabled                 = true
-    isGroupRestricted           = true
-    accessTokenDurationMinutes  = 60
-    refreshTokenDurationMinutes = 43200
-    skipConsent                 = true
-  })
-
-  update_data = jsonencode({
-    name                        = "LiteLLM"
-    callbackURLs                = ["https://litellm.oskarrosen.io/sso/callback"]
-    isPublic                    = false
-    pkceEnabled                 = true
-    isGroupRestricted           = true
-    accessTokenDurationMinutes  = 60
-    refreshTokenDurationMinutes = 43200
-    skipConsent                 = true
-  })
-
-  ignore_server_additions = true
+moved {
+  from = restapi_object.portainer
+  to   = restapi_object.oidc_clients["portainer"]
 }
 
-resource "restapi_object" "openwebui" {
-  path = "/oidc/clients"
-  data = jsonencode({
-    id                          = "1b8e5f3a-7c94-4d21-8a6f-3d5c9e1b4a72"
-    name                        = "Open WebUI"
-    callbackURLs                = ["https://openwebui.oskarrosen.io/oauth/oidc/callback"]
-    isPublic                    = false
-    pkceEnabled                 = true
-    isGroupRestricted           = true
-    accessTokenDurationMinutes  = 60
-    refreshTokenDurationMinutes = 43200
-    skipConsent                 = true
-  })
-
-  update_data = jsonencode({
-    name                        = "Open WebUI"
-    callbackURLs                = ["https://openwebui.oskarrosen.io/oauth/oidc/callback"]
-    isPublic                    = false
-    pkceEnabled                 = true
-    isGroupRestricted           = true
-    accessTokenDurationMinutes  = 60
-    refreshTokenDurationMinutes = 43200
-    skipConsent                 = true
-  })
-
-  ignore_server_additions = true
+moved {
+  from = restapi_object.litellm
+  to   = restapi_object.oidc_clients["litellm"]
 }
 
-resource "restapi_object" "grafana" {
-  path = "/oidc/clients"
-  data = jsonencode({
-    id                          = "ce33fcb3-05cf-4f7e-a5ef-ddd29b05bbd0"
-    name                        = "Grafana"
-    callbackURLs                = ["https://grafana.oskarrosen.io/login/generic_oauth"]
-    isPublic                    = false
-    pkceEnabled                 = true
-    isGroupRestricted           = true
-    accessTokenDurationMinutes  = 60
-    refreshTokenDurationMinutes = 43200
-    skipConsent                 = true
-  })
-
-  update_data = jsonencode({
-    name                        = "Grafana"
-    callbackURLs                = ["https://grafana.oskarrosen.io/login/generic_oauth"]
-    isPublic                    = false
-    pkceEnabled                 = true
-    isGroupRestricted           = true
-    accessTokenDurationMinutes  = 60
-    refreshTokenDurationMinutes = 43200
-    skipConsent                 = true
-  })
-
-  ignore_server_additions = true
+moved {
+  from = restapi_object.openwebui
+  to   = restapi_object.oidc_clients["openwebui"]
 }
 
-resource "restapi_object" "pgadmin" {
-  path = "/oidc/clients"
-  data = jsonencode({
-    id                          = "c54ae573-bd82-40f7-8a1f-1493c15d1ea3"
-    name                        = "pgAdmin"
-    callbackURLs                = ["https://pgadmin.oskarrosen.io/oauth2/authorize"]
-    isPublic                    = false
-    pkceEnabled                 = true
-    isGroupRestricted           = true
-    accessTokenDurationMinutes  = 60
-    refreshTokenDurationMinutes = 43200
-    skipConsent                 = true
-  })
+moved {
+  from = restapi_object.grafana
+  to   = restapi_object.oidc_clients["grafana"]
+}
 
-  update_data = jsonencode({
-    name                        = "pgAdmin"
-    callbackURLs                = ["https://pgadmin.oskarrosen.io/oauth2/authorize"]
-    isPublic                    = false
-    pkceEnabled                 = true
-    isGroupRestricted           = true
-    accessTokenDurationMinutes  = 60
-    refreshTokenDurationMinutes = 43200
-    skipConsent                 = true
-  })
-
-  ignore_server_additions = true
+moved {
+  from = restapi_object.pgadmin
+  to   = restapi_object.oidc_clients["pgadmin"]
 }
 
 data "restapi_object" "admin_group" {
@@ -218,31 +139,20 @@ data "restapi_object" "admin_group" {
   search_value = "admin"
 }
 
-locals {
-  oidc_client_ids = {
-    tinyauth  = restapi_object.tinyauth.id
-    portainer = restapi_object.portainer.id
-    litellm   = restapi_object.litellm.id
-    openwebui = restapi_object.openwebui.id
-    grafana   = restapi_object.grafana.id
-    pgadmin   = restapi_object.pgadmin.id
-  }
-}
-
 # Pocket ID has no GET for this sub-resource, so PUT is (ab)used for create,
 # read and update; destroying reverts the client to no allowed groups.
 resource "restapi_object" "allowed_user_groups" {
-  for_each = local.oidc_client_ids
+  for_each = restapi_object.oidc_clients
 
-  path           = "/oidc/clients/${each.value}/allowed-user-groups"
-  object_id      = each.value
+  path           = "/oidc/clients/${each.value.id}/allowed-user-groups"
+  object_id      = each.value.id
   create_method  = "PUT"
   read_method    = "PUT"
   update_method  = "PUT"
   destroy_method = "PUT"
-  read_path      = "/oidc/clients/${each.value}/allowed-user-groups"
-  update_path    = "/oidc/clients/${each.value}/allowed-user-groups"
-  destroy_path   = "/oidc/clients/${each.value}/allowed-user-groups"
+  read_path      = "/oidc/clients/${each.value.id}/allowed-user-groups"
+  update_path    = "/oidc/clients/${each.value.id}/allowed-user-groups"
+  destroy_path   = "/oidc/clients/${each.value.id}/allowed-user-groups"
 
   data         = jsonencode({ userGroupIds = [data.restapi_object.admin_group.id] })
   read_data    = jsonencode({ userGroupIds = [data.restapi_object.admin_group.id] })
