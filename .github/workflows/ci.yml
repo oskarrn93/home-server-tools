@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  healthcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: healthcheck/go.mod
+      - run: go vet ./... && go test ./...
+        working-directory: healthcheck
+
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # env_file entries must exist for `config` to resolve - use the
+      # committed .example files as stand-ins for the gitignored real ones.
+      - name: Stand in example env files
+        run: |
+          for example in $(git ls-files '*.env.example' '**/.env.example'); do
+            cp "$example" "${example%.example}"
+          done
+      - name: Validate every compose file
+        run: |
+          for file in */docker-compose.yml; do
+            echo "::group::$file"
+            docker compose -f "$file" config -q
+            echo "::endgroup::"
+          done
+
+  terraform:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        dir: [ai/terraform, auth/terraform]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@v4
+      - run: terraform fmt -check -recursive
+        working-directory: ${{ matrix.dir }}
+      - run: terraform init -backend=false -input=false && terraform validate
+        working-directory: ${{ matrix.dir }}
+
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: shellcheck -x database/*.sh
