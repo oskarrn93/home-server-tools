@@ -1,6 +1,14 @@
 terraform {
   required_version = ">= 1.16.0"
 
+  backend "s3" {
+    bucket       = "oskarrosen-terraform"
+    key          = "home-server-tools/ai/terraform.tfstate"
+    region       = "eu-north-1"
+    encrypt      = true
+    use_lockfile = true
+  }
+
   required_providers {
     ollama = {
       source  = "kicc-akdb-de/ollama"

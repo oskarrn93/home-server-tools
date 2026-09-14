@@ -1,6 +1,14 @@
 terraform {
   required_version = ">= 1.16.0"
 
+  backend "s3" {
+    bucket       = "oskarrosen-terraform"
+    key          = "home-server-tools/auth/terraform.tfstate"
+    region       = "eu-north-1"
+    encrypt      = true
+    use_lockfile = true
+  }
+
   required_providers {
     restapi = {
       source  = "Mastercard/restapi"
@@ -158,4 +166,6 @@ resource "restapi_object" "allowed_user_groups" {
   read_data    = jsonencode({ userGroupIds = [data.restapi_object.admin_group.id] })
   update_data  = jsonencode({ userGroupIds = [data.restapi_object.admin_group.id] })
   destroy_data = jsonencode({ userGroupIds = [] })
+
+  ignore_server_additions = true
 }
