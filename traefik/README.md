@@ -7,7 +7,11 @@ All services are reachable at a single `*.oskarrosen.io` hostname namespace — 
 
 Every router — public and LAN-only alike — is declared on both `web` and `web_secure` (`entrypoints=web,web_secure`) with `tls=true` / `tls.certresolver=lets_encrypt`, so all hostnames get the same real Let's Encrypt wildcard cert (`*.oskarrosen.io`, via the `route53` DNS challenge) and work whether a client connects over plain HTTP or HTTPS. This matters because most modern browsers try HTTPS first for typed URLs regardless of what a link says — a LAN-only host with no `web_secure` router would 404 for those clients even though plain `http://` worked. There is no entrypoint-level HTTP→HTTPS redirect (removing one is what motivated always dual-registering routers instead): a global redirect on `web` would send LAN-only hosts to `web_secure` before their own router could even match.
 
-Public vs. LAN-only is purely a DNS-resolution distinction (see tables below) — it has no effect on Traefik's router config anymore.
+DNS alone does not make a host LAN-only: Traefik routes on the `Host` header, so anyone who reaches `:443` on the public IP can ask for any hostname, Route53 record or not. Every LAN-only router therefore lists `lan-only@file` (an `ipAllowList` for `192.168.1.0/24`, the Docker bridges, and loopback — see `dynamic/middlewares.yml`) first in its `middlewares`. Public routers leave it off.
+
+Any router covering a path prefix of a public host (e.g. iptv-proxy-go's `/admin`) must list the same entrypoints as that host's catch-all router. Otherwise requests on the missing entrypoint fall through to the catch-all and skip the prefix router's middlewares.
+
+`whoami` (compose profile `debug`, LAN-only behind tinyauth) echoes the client IP and headers Traefik forwards — start it only while debugging: `docker compose --profile debug up -d whoami`.
 
 ## Public (also defined in Route53)
 
@@ -39,7 +43,6 @@ Public vs. LAN-only is purely a DNS-resolution distinction (see tables below) �
 | `calibre.oskarrosen.io` | Calibre (desktop) | `media-services` |
 | `calibre-content.oskarrosen.io` | Calibre (content server) | `media-services` |
 | `tautulli.oskarrosen.io` | Tautulli | `media-services` |
-| `flaresolverr.oskarrosen.io` | FlareSolverr | `media-services` |
 | `plex.oskarrosen.io` | Plex | `media-services` |
 | `dispatcharr.oskarrosen.io` | Dispatcharr | `media-services` |
 | `stirling-pdf.oskarrosen.io` | Stirling PDF | `media-services` |
@@ -52,9 +55,10 @@ Public vs. LAN-only is purely a DNS-resolution distinction (see tables below) �
 | `litellm.oskarrosen.io` | LiteLLM | `home-server-tools/ai` |
 | `openspeedtest.oskarrosen.io` | OpenSpeedTest | `home-server-tools/openspeedtest` |
 | `healthcheck.oskarrosen.io` | healthcheck | `home-server-tools/healthcheck` |
+| `whoami.oskarrosen.io` | whoami (debug profile, usually stopped) | `home-server-tools/traefik` |
 
 ## Adding a new domain
 
-1. Add the paired `traefik.*` labels to the service in its `docker-compose.yml` (see `media-services/.claude/CLAUDE.md` or `home-server-tools/ai/.claude/CLAUDE.md` for the label pattern) — always `entrypoints=web,web_secure` with `tls=true` / `tls.certresolver=lets_encrypt`, regardless of whether the host is public or LAN-only.
+1. Add the paired `traefik.*` labels to the service in its `docker-compose.yml` (see `media-services/.claude/CLAUDE.md` or `home-server-tools/ai/.claude/CLAUDE.md` for the label pattern) — always `entrypoints=web,web_secure` with `tls=true` / `tls.certresolver=lets_encrypt`, regardless of whether the host is public or LAN-only. LAN-only hosts also get `middlewares=lan-only@file` (first, before e.g. `tinyauth@file`).
 2. Add an A record for the new hostname in the UniFi console pointing at `192.168.1.12` so LAN clients can resolve it.
 3. If the service should also be reachable off-LAN, add a matching Route53 record pointing at the public target, and move the entry from the LAN-only table above to the public one.

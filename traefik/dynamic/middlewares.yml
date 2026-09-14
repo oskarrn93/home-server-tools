@@ -1,5 +1,17 @@
 http:
   middlewares:
+    # Put first on every LAN-only router. DNS alone doesn't keep those hosts
+    # private: Traefik routes on the Host header, so anyone reaching :443 on
+    # the public IP can name any hostname. Traefik sees real client IPs
+    # (Docker DNATs published ports); requests from the host itself or from
+    # other containers arrive from a Docker bridge gateway in 172.16.0.0/12.
+    lan-only:
+      ipAllowList:
+        sourceRange:
+          - "192.168.1.0/24"
+          - "172.16.0.0/12"
+          - "127.0.0.1/32"
+
     ratelimit:
       rateLimit:
         average: 100
