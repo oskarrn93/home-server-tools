@@ -6,20 +6,109 @@ updates:
     directories: ["/healthcheck"]
     schedule:
       interval: "daily"
+    groups:
+      docker:
+        patterns:
+          - "*"
+
+  # One entry per stack so each stack's updates batch into their own PR
+  # instead of being grouped together across unrelated services.
   - package-ecosystem: "docker-compose"
-    directories: ["/*"]
+    directory: "/healthcheck"
     schedule:
       interval: "daily"
-    open-pull-requests-limit: 20
+    groups:
+      healthcheck:
+        patterns:
+          - "*"
+  - package-ecosystem: "docker-compose"
+    directory: "/pgadmin"
+    schedule:
+      interval: "daily"
+    groups:
+      pgadmin:
+        patterns:
+          - "*"
+  - package-ecosystem: "docker-compose"
+    directory: "/traefik"
+    schedule:
+      interval: "daily"
+    groups:
+      traefik:
+        patterns:
+          - "*"
+  - package-ecosystem: "docker-compose"
+    directory: "/ai"
+    schedule:
+      interval: "daily"
+    groups:
+      ai:
+        patterns:
+          - "*"
+  - package-ecosystem: "docker-compose"
+    directory: "/portainer"
+    schedule:
+      interval: "daily"
+    groups:
+      portainer:
+        patterns:
+          - "*"
+  - package-ecosystem: "docker-compose"
+    directory: "/openspeedtest"
+    schedule:
+      interval: "daily"
+    groups:
+      openspeedtest:
+        patterns:
+          - "*"
+  - package-ecosystem: "docker-compose"
+    directory: "/auth"
+    schedule:
+      interval: "daily"
+    groups:
+      auth:
+        patterns:
+          - "*"
+  - package-ecosystem: "docker-compose"
+    directory: "/it-tools"
+    schedule:
+      interval: "daily"
+    groups:
+      it-tools:
+        patterns:
+          - "*"
+
   - package-ecosystem: "gomod"
     directories: ["/healthcheck"]
     schedule:
       interval: "weekly"
+    groups:
+      go-modules:
+        patterns:
+          - "*"
+
   - package-ecosystem: "terraform"
-    directories: ["/ai/terraform", "/auth/terraform"]
+    directory: "/ai/terraform"
     schedule:
       interval: "weekly"
+    groups:
+      ai-terraform:
+        patterns:
+          - "*"
+  - package-ecosystem: "terraform"
+    directory: "/auth/terraform"
+    schedule:
+      interval: "weekly"
+    groups:
+      auth-terraform:
+        patterns:
+          - "*"
+
   - package-ecosystem: "github-actions"
     directories: ["/"]
     schedule:
       interval: "weekly"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
