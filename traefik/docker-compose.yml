@@ -86,7 +86,7 @@ services:
   #   curl https://whoami.oskarrosen.io
   #   docker compose --profile debug stop whoami
   whoami:
-    image: traefik/whoami:v1.10
+    image: traefik/whoami:v1.12
     container_name: whoami
     profiles: ["debug"]
     networks:
