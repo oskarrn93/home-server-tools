@@ -1,4 +1,3 @@
-version: "3.3"
 services:
   healthcheck:
     restart: unless-stopped
@@ -15,9 +14,10 @@ services:
       - "traefik.http.routers.healthcheck.entrypoints=web,web_secure"
       - "traefik.http.routers.healthcheck.tls=true"
       - "traefik.http.routers.healthcheck.tls.certresolver=lets_encrypt"
+      - "traefik.http.routers.healthcheck.middlewares=lan-only@file"
       - "traefik.http.services.healthcheck.loadbalancer.server.port=8080"
       - "traefik.http.routers.healthcheck-www.rule=Host(`www.oskarrosen.io`)"
-      - "traefik.http.routers.healthcheck-www.entrypoints=web_secure"
+      - "traefik.http.routers.healthcheck-www.entrypoints=web,web_secure"
       - "traefik.http.routers.healthcheck-www.service=healthcheck"
       - "traefik.http.routers.healthcheck-www.tls=true"
       - "traefik.http.routers.healthcheck-www.tls.certresolver=lets_encrypt"
@@ -26,8 +26,6 @@ services:
     networks:
       - default
       - traefik_internal
-    ports:
-      - "8086:8080"
 
 networks:
   traefik_internal:

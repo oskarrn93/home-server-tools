@@ -10,6 +10,7 @@ services:
       - "--metrics.prometheus.addRoutersLabels=true"
       - "--metrics.prometheus.addServicesLabels=true"
       - "--providers.docker=true"
+      - "--providers.docker.endpoint=tcp://socket-proxy:2375"
       - "--providers.docker.exposedbydefault=false"
       - "--providers.file.directory=/dynamic"
       - "--providers.file.watch=true"
@@ -19,25 +20,37 @@ services:
       - "--entrypoints.web.http.middlewares=ratelimit@file,fail2ban@file"
       - "--entrypoints.web_secure.address=:443"
       - "--entrypoints.web_secure.http.middlewares=ratelimit@file,fail2ban@file"
-      - "--certificatesResolvers.lets_encrypt.acme.httpChallenge=true"
       - "--certificatesResolvers.lets_encrypt.acme.email=oskar@oskarrosen.com"
       - "--certificatesResolvers.lets_encrypt.acme.storage=/letsencrypt/acme.json"
-      - "--certificatesresolvers.lets_encrypt.acme.dnschallenge.provider=route53"
+      - "--certificatesResolvers.lets_encrypt.acme.dnsChallenge.provider=route53"
+      # UniFi's local DNS answers *.oskarrosen.io itself and returns NXDOMAIN
+      # for _acme-challenge TXT records, so check propagation against public
+      # resolvers instead of the container's (host's) resolver.
+      - "--certificatesResolvers.lets_encrypt.acme.dnsChallenge.resolvers=1.1.1.1:53,8.8.8.8:53"
     env_file:
       - .env
+    environment:
+      # Route53 is global, but the AWS SDK behind lego's route53 DNS challenge
+      # still refuses to build an endpoint without a region ("Missing Region")
+      # - only ~/.aws/credentials is mounted, not ~/.aws/config.
+      AWS_REGION: eu-north-1
     volumes:
-      - "/var/run/docker.sock:/var/run/docker.sock:ro"
       - "~/.aws/credentials:/root/.aws/credentials:ro"
       - "./lets_encrypt/acme.json:/letsencrypt/acme.json"
       - "./dynamic:/dynamic:ro"
       - "plugins-storage:/plugins-storage"
+    depends_on:
+      - socket-proxy
     networks:
       - default
       - traefik_internal
+      - socket_proxy
     ports:
       - "80:80"
       - "443:443"
-      - "8081:8080"
+      # Prometheus metrics (scraped by server-observability at 172.17.0.1:8081) -
+      # bound to the docker0 gateway only, not the LAN.
+      - "172.17.0.1:8081:8080"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.dashboard.rule=Host(`traefik.oskarrosen.io`)"
@@ -45,7 +58,25 @@ services:
       - "traefik.http.routers.dashboard.tls=true"
       - "traefik.http.routers.dashboard.tls.certresolver=lets_encrypt"
       - "traefik.http.routers.dashboard.service=api@internal"
-      - "traefik.http.routers.dashboard.middlewares=dashboardauth@file"
+      - "traefik.http.routers.dashboard.middlewares=lan-only@file,dashboardauth@file"
+
+  # Read-only Docker API filter so the internet-facing Traefik container never
+  # holds the raw socket - only the container/network/event endpoints the
+  # docker provider needs are allowed. Its network is internal (no egress).
+  socket-proxy:
+    image: tecnativa/docker-socket-proxy:v0.5.0
+    container_name: traefik-socket-proxy
+    restart: unless-stopped
+    environment:
+      CONTAINERS: 1
+      NETWORKS: 1
+      EVENTS: 1
+      VERSION: 1
+      POST: 0
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    networks:
+      - socket_proxy
 
   # Debug-only echo server: shows the client IP and headers Traefik forwards
   # (e.g. to check what lan-only@file sees). It echoes every request header,
@@ -75,4 +106,6 @@ volumes:
 
 networks:
   traefik_internal:
-   external: true
+    external: true
+  socket_proxy:
+    internal: true

@@ -5,9 +5,11 @@ All services are reachable at a single `*.oskarrosen.io` hostname namespace — 
 - **LAN clients**: the UniFi console at `192.168.1.1` acts as the local DNS server and resolves every `*.oskarrosen.io` name to `192.168.1.12` (this host).
 - **Off-LAN clients**: only a subset of names additionally have a public record in AWS Route53, pointing at the public IP/target that reaches this host. Everything else has no public record and simply won't resolve outside the LAN.
 
-Every router — public and LAN-only alike — is declared on both `web` and `web_secure` (`entrypoints=web,web_secure`) with `tls=true` / `tls.certresolver=lets_encrypt`, so all hostnames get the same real Let's Encrypt wildcard cert (`*.oskarrosen.io`, via the `route53` DNS challenge) and work whether a client connects over plain HTTP or HTTPS. This matters because most modern browsers try HTTPS first for typed URLs regardless of what a link says — a LAN-only host with no `web_secure` router would 404 for those clients even though plain `http://` worked. There is no entrypoint-level HTTP→HTTPS redirect (removing one is what motivated always dual-registering routers instead): a global redirect on `web` would send LAN-only hosts to `web_secure` before their own router could even match.
+Every router — public and LAN-only alike — is declared on both `web` and `web_secure` (`entrypoints=web,web_secure`; the one exception is `n8n`, `web_secure` only because it sets secure cookies) with `tls=true` / `tls.certresolver=lets_encrypt`, so all hostnames get the same real Let's Encrypt wildcard cert (`*.oskarrosen.io`, via the `route53` DNS challenge) and work whether a client connects over plain HTTP or HTTPS. This matters because most modern browsers try HTTPS first for typed URLs regardless of what a link says — a LAN-only host with no `web_secure` router would 404 for those clients even though plain `http://` worked. There is no entrypoint-level HTTP→HTTPS redirect (removing one is what motivated always dual-registering routers instead): a global redirect on `web` would send LAN-only hosts to `web_secure` before their own router could even match.
 
-DNS alone does not make a host LAN-only: Traefik routes on the `Host` header, so anyone who reaches `:443` on the public IP can ask for any hostname, Route53 record or not. Every LAN-only router therefore lists `lan-only@file` (an `ipAllowList` for `192.168.1.0/24`, the Docker bridges, and loopback — see `dynamic/middlewares.yml`) first in its `middlewares`. Public routers leave it off.
+DNS alone does not make a host LAN-only: Traefik routes on the `Host` header, so anyone who reaches `:443` on the public IP can ask for any hostname, Route53 record or not. Every LAN-only router therefore lists `lan-only@file` (an `ipAllowList` for `192.168.1.0/24`, the Docker bridges, and loopback — see `dynamic/middlewares.yml`) first in its `middlewares`. Public routers leave it off. Services behind Traefik also shouldn't publish their own host ports (`ports:`), since Docker's iptables rules bypass UFW and a direct port skips `lan-only`, Tinyauth, and OIDC entirely — the remaining exceptions are bound to `127.0.0.1`/`172.17.0.1` (Ollama, n8n's API for Terraform, Traefik's metrics) or harmless (OpenSpeedTest's `3000`, so speed tests aren't measured through the proxy).
+
+Traefik doesn't mount the Docker socket itself: the `socket-proxy` service (`tecnativa/docker-socket-proxy`, read-only container/network/event endpoints, on an `internal` network) serves the Docker provider at `tcp://socket-proxy:2375`, so a compromised Traefik can't drive the Docker API.
 
 Any router covering a path prefix of a public host (e.g. iptv-proxy-go's `/admin`) must list the same entrypoints as that host's catch-all router. Otherwise requests on the missing entrypoint fall through to the catch-all and skip the prefix router's middlewares.
 
@@ -21,7 +23,7 @@ Any router covering a path prefix of a public host (e.g. iptv-proxy-go's `/admin
 | `iptv.oskarrosen.io` | iptv-proxy-go | `media-services` |
 | `n8n.oskarrosen.io` | n8n | `home-server-tools/ai` |
 | `www.oskarrosen.io` | healthcheck | `home-server-tools/healthcheck` |
-| `it-tools.oskarrosen.io` | IT Tools | `home-server-tools/it-tools` |
+| `it-tools.oskarrosen.io` | IT Tools (behind tinyauth) | `home-server-tools/it-tools` |
 | `auth.oskarrosen.io` | Tinyauth (forward-auth gate) | `home-server-tools/auth` |
 | `oidc.oskarrosen.io` | Pocket ID (OIDC provider) | `home-server-tools/auth` |
 
@@ -53,6 +55,8 @@ Any router covering a path prefix of a public host (e.g. iptv-proxy-go's `/admin
 | `qbittorrent.oskarrosen.io` | qBittorrent | `media-services` |
 | `sabnzbd.oskarrosen.io` | SABnzbd | `media-services` |
 | `litellm.oskarrosen.io` | LiteLLM | `home-server-tools/ai` |
+| `pgadmin.oskarrosen.io` | pgAdmin | `home-server-tools/pgadmin` |
+| `grafana.oskarrosen.io` | Grafana | `server-observability` |
 | `openspeedtest.oskarrosen.io` | OpenSpeedTest | `home-server-tools/openspeedtest` |
 | `healthcheck.oskarrosen.io` | healthcheck | `home-server-tools/healthcheck` |
 | `whoami.oskarrosen.io` | whoami (debug profile, usually stopped) | `home-server-tools/traefik` |

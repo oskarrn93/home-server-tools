@@ -11,9 +11,9 @@ general:
   # Password for the /metrics (OpenMetrics) endpoint's HTTP Basic Auth.
   # SearXNG has no SEARXNG_* env-var override for `open_metrics` (unlike
   # secret_key/valkey.url below), so it can't live in the gitignored
-  # searxng.env and has to be committed here instead. /metrics is only
-  # reachable over the internal ai_default Docker network, not published via
-  # Traefik, so this isn't gating anything a real secret would.
+  # searxng.env and has to be committed here instead. It only gates read-only
+  # metrics, reachable over the ai_default Docker network or via the LAN-only
+  # (lan-only@file) searxng.oskarrosen.io Traefik router.
   open_metrics: "searxng-metrics-b3f7a1c9d4e26058"
 
 server:

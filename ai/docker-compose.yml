@@ -16,7 +16,8 @@ services:
           nocopy: true
       - ./ollama/Modelfile_qwen_2_5_3b_instruct:/Modelfile:ro
     ports:
-      - "11434:11434"
+      # Localhost only (ai/terraform's ollama provider) - Ollama has no auth.
+      - "127.0.0.1:11434:11434"
 
   litellm:
     image: ghcr.io/berriai/litellm:v1.100.0
@@ -46,14 +47,13 @@ services:
       - "traefik.http.routers.litellm.entrypoints=web,web_secure"
       - "traefik.http.routers.litellm.tls=true"
       - "traefik.http.routers.litellm.tls.certresolver=lets_encrypt"
+      - "traefik.http.routers.litellm.middlewares=lan-only@file"
       - "traefik.http.services.litellm.loadbalancer.server.port=4000"
       - "traefik.docker.network=traefik_internal"
     networks:
       - default
       - media-services_default
       - traefik_internal
-    ports:
-      - "4000:4000"
 
   ollama-exporter:
     image: ghcr.io/maravexa/ollama-exporter:v0.1.2
@@ -91,17 +91,16 @@ services:
       - "traefik.http.routers.searxng.entrypoints=web,web_secure"
       - "traefik.http.routers.searxng.tls=true"
       - "traefik.http.routers.searxng.tls.certresolver=lets_encrypt"
+      - "traefik.http.routers.searxng.middlewares=lan-only@file"
       - "traefik.http.services.searxng.loadbalancer.server.port=8080"
       - "traefik.http.routers.searxng.service=searxng"
       - "traefik.docker.network=traefik_internal"
     networks:
       - default
       - traefik_internal
-    ports:
-      - "8888:8080"
 
   openwebui:
-    image: openwebui/open-webui:0.11-slim
+    image: openwebui/open-webui:0.11.3-slim
     container_name: openwebui
     restart: unless-stopped
     env_file:
@@ -135,14 +134,13 @@ services:
       - "traefik.http.routers.openwebui.entrypoints=web,web_secure"
       - "traefik.http.routers.openwebui.tls=true"
       - "traefik.http.routers.openwebui.tls.certresolver=lets_encrypt"
+      - "traefik.http.routers.openwebui.middlewares=lan-only@file"
       - "traefik.http.services.openwebui.loadbalancer.server.port=8080"
       - "traefik.http.routers.openwebui.service=openwebui"
       - "traefik.docker.network=traefik_internal"
     networks:
       - default
       - traefik_internal
-    ports:
-      - "3011:8080"
 
   n8n:
     image: n8nio/n8n:2.36.8
@@ -169,7 +167,7 @@ services:
       N8N_PROTOCOL: https
       N8N_EDITOR_BASE_URL: https://n8n.oskarrosen.io
       WEBHOOK_URL: https://n8n.oskarrosen.io/
-      N8N_SECURE_COOKIE: "false"
+      N8N_SECURE_COOKIE: "true"
       GENERIC_TIMEZONE: ${TZ}
       N8N_METRICS: "true"
       N8N_METRICS_INCLUDE_WEBHOOK_METRICS: "true"
@@ -203,6 +201,7 @@ services:
       - "traefik.http.routers.n8n.service=n8n"
       - "traefik.http.routers.n8n.tls=true"
       - "traefik.http.routers.n8n.tls.certresolver=lets_encrypt"
+      - "traefik.http.routers.n8n.middlewares=fail2ban-strict@file,fail2ban-404@file"
       - "traefik.http.routers.n8n.tls.domains[0].main=*.oskarrosen.io"
       - "traefik.docker.network=traefik_internal"
     networks:
@@ -210,7 +209,9 @@ services:
       - traefik_internal
       - media-services_default
     ports:
-      - "5678:5678"
+      # docker0 gateway only, for ai/terraform's n8n REST API calls
+      # (n8n_base_url) - browsers go through Traefik.
+      - "172.17.0.1:5678:5678"
 
   n8n-sandbox-tls-init:
     image: n8nio/n8n-sandbox-service-api:1.2.0

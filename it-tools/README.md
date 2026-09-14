@@ -6,8 +6,8 @@ nginx, no backend, no data storage.
 
 ## Setup
 
-1. Add an A record for `it-tools.oskarrosen.io` → `192.168.1.12` in the UniFi console (see
-   `../traefik/README.md`).
+1. Add an A record for `it-tools.oskarrosen.io` → `192.168.1.12` in the UniFi console, and a
+   Route53 record for off-LAN access (see `../traefik/README.md`).
 2. Start it:
    ```bash
    docker compose up -d
@@ -17,5 +17,6 @@ nginx, no backend, no data storage.
 
 ## Notes
 
-- LAN-only (no Route53 record) — see `../traefik/README.md` for the public/LAN-only distinction.
+- Public (has a Route53 record), gated by Tinyauth plus `fail2ban-strict@file`/`fail2ban-404@file`
+  — see `../traefik/README.md` for the public/LAN-only distinction.
 - Pinned to `2024.10.22-7ca5933`, the newest non-`latest`/`nightly` tag published on Docker Hub.
