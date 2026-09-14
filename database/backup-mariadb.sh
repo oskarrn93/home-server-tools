@@ -1,86 +1,43 @@
 #!/usr/bin/env bash
 #
-# Timestamped backup of the host-installed MariaDB database provisioned by
-# ansible/local-databases.yml.
+# Nightly backup of every database on the host-installed MariaDB instance
+# provisioned by ansible/local-databases.yml (Uptime Kuma's kuma, app, ...).
 #
 # Usage:
 #   cd database && ./backup-mariadb.sh
 #   (or: make backup-mariadb)
 #
-# Reads connection details from backup.env (gitignored - copy backup.env.example
-# and fill in the real app credentials). Writes timestamped dumps into
-# $BACKUP_ROOT/mariadb/<timestamp>/ (BACKUP_ROOT in backup.env, defaults to
-# ./backups next to this script) and keeps only the most recent 7 timestamped runs.
+# Connects as the read-only backup user from backup.env, which
+# ansible/local-databases.yml writes. Each run produces
+# $BACKUP_ROOT/mariadb/<timestamp>/ containing:
+#   <db>.sql.gz    one gzipped dump per database (with CREATE DATABASE)
+# and keeps the most recent 7 runs. See backup-lib.sh for atomicity/alerting.
+# Users/grants aren't dumped - ansible/local-databases.yml recreates them.
 #
-# Restore:
-#   mysql -h <host> -P <port> -u <user> -p<password> <db> < $BACKUP_ROOT/mariadb/<ts>/mariadb.sql
-#
-# Alerting: on success, pushes backup_last_success_timestamp_seconds and
-# backup_duration_seconds (labeled database="mariadb") to the Prometheus
-# Pushgateway (BACKUP_PUSHGATEWAY_URL in backup.env, defaults to
-# http://localhost:9092). The DatabaseBackupStale rule in
-# server-observability/prometheus-rules/database-alerts.yaml fires if no
-# successful push has landed in over 26h - covering both "the dump failed"
-# and "the cron job stopped running entirely" in one check, since a failed
-# run never reaches the push at all.
+# Restore one database (as root):
+#   gunzip -c <ts>/<db>.sql.gz | mysql
 
-set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/backup-lib.sh"
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+load_backup_env
+require_cmds mysql mysqldump gzip curl
+require_vars MARIADB_USER MARIADB_PASSWORD
 
-ENV_FILE="$SCRIPT_DIR/backup.env"
-if [[ ! -f "$ENV_FILE" ]]; then
-  echo "Missing $ENV_FILE - copy backup.env.example to backup.env and fill in credentials." >&2
-  exit 1
-fi
-# shellcheck disable=SC1090
-set -a
-source "$ENV_FILE"
-set +a
+export MYSQL_PWD="$MARIADB_PASSWORD"
+CONN=(-h "${MARIADB_HOST:-localhost}" -P "${MARIADB_PORT:-3306}" -u "$MARIADB_USER" --skip-ssl-verify-server-cert)
 
-PUSHGATEWAY_URL="${BACKUP_PUSHGATEWAY_URL:-http://localhost:9092}"
-START_TIME="$(date +%s)"
+mapfile -t DATABASES < <(mysql "${CONN[@]}" -NBe "SHOW DATABASES" \
+  | grep -vxE 'information_schema|performance_schema|sys|mysql')
+[[ ${#DATABASES[@]} -gt 0 ]] || die "Could not list MariaDB databases as $MARIADB_USER"
 
-if ! command -v mysqldump >/dev/null 2>&1; then
-  echo "mysqldump not found - is the mariadb-client package installed?" >&2
-  exit 1
-fi
-if [[ -z "${MARIADB_USER:-}" ]]; then
-  echo "MARIADB_USER not set in $ENV_FILE" >&2
-  exit 1
-fi
+begin_backup mariadb
 
-TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
-BACKUP_ROOT="${BACKUP_ROOT:-$SCRIPT_DIR/backups}/mariadb"
-OUT_DIR="$BACKUP_ROOT/$TIMESTAMP"
-mkdir -p "$OUT_DIR"
-
-echo "==> Backing up MariaDB ($MARIADB_DATABASE) to $OUT_DIR"
-MYSQL_PWD="$MARIADB_PASSWORD" mysqldump \
-  -h "${MARIADB_HOST:-localhost}" \
-  -P "${MARIADB_PORT:-3307}" \
-  -u "$MARIADB_USER" \
-  --single-transaction \
-  "$MARIADB_DATABASE" \
-  > "$OUT_DIR/mariadb.sql"
-
-echo "==> Pruning old MariaDB backups (keeping last 7)"
-mapfile -t OLD_BACKUPS < <(ls -1dt "$BACKUP_ROOT"/*/ 2>/dev/null | tail -n +8)
-for old in "${OLD_BACKUPS[@]:-}"; do
-  [[ -n "$old" ]] || continue
-  echo "    removing $old"
-  rm -rf "$old"
+for db in "${DATABASES[@]}"; do
+  echo "    $db"
+  mysqldump "${CONN[@]}" \
+    --single-transaction --routines --events --triggers --no-tablespaces \
+    --databases "$db" \
+    | gzip > "$WORK_DIR/$db.sql.gz"
 done
 
-echo "==> Done: $OUT_DIR"
-
-END_TIME="$(date +%s)"
-cat <<EOF | curl -fsS --max-time 10 --data-binary @- \
-  "$PUSHGATEWAY_URL/metrics/job/database_backup/database/mariadb" \
-  || echo "    (failed to push metrics to $PUSHGATEWAY_URL)" >&2
-# TYPE backup_last_success_timestamp_seconds gauge
-backup_last_success_timestamp_seconds $END_TIME
-# TYPE backup_duration_seconds gauge
-backup_duration_seconds $((END_TIME - START_TIME))
-EOF
+finish_backup mariadb

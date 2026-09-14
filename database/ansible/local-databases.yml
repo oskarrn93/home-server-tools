@@ -7,6 +7,69 @@
   vars_files:
     - vars/local-databases.yml
 
+  vars:
+    valkey_cli:
+      - valkey-cli
+      - --no-auth-warning
+      - -a
+      - "{{ valkey_root_password }}"
+      - -h
+      - "{{ valkey_host }}"
+      - -p
+      - "{{ valkey_port | string }}"
+    # One database + owner role per app on the shared PostgreSQL instance.
+    postgres_app_databases:
+      - { name: Immich, db: "{{ immich_db }}", user: "{{ immich_user }}", password: "{{ immich_password }}" }
+      - { name: Mealie, db: "{{ mealie_db }}", user: "{{ mealie_user }}", password: "{{ mealie_password }}" }
+      - { name: Paperless-ngx, db: "{{ paperless_db }}", user: "{{ paperless_user }}", password: "{{ paperless_password }}" }
+      - { name: LiteLLM, db: "{{ litellm_db }}", user: "{{ litellm_user }}", password: "{{ litellm_password }}" }
+      - { name: Seerr, db: "{{ seerr_db }}", user: "{{ seerr_user }}", password: "{{ seerr_password }}" }
+      - { name: Pocket ID, db: "{{ pocketid_db }}", user: "{{ pocketid_user }}", password: "{{ pocketid_password }}" }
+      - { name: tinyauth, db: "{{ tinyauth_db }}", user: "{{ tinyauth_user }}", password: "{{ tinyauth_password }}" }
+    # Valkey ACL rules apply in order, so specific grants (+info, ...) must come
+    # after the category denials - otherwise -@dangerous silently revokes them.
+    # Key access (~) and pub/sub channel access (&) are separate grants; Immich's
+    # BullMQ job events need &*. ioredis (Immich) and friends run INFO as part of
+    # their startup ready check, which -@dangerous would strip.
+    valkey_app_rules: ["~*", "&*", "+@all", "-@admin", "-@dangerous", "+info"]
+    valkey_acl_users:
+      - user: "{{ valkey_searxng_user }}"
+        password: "{{ valkey_searxng_password }}"
+        rules: "{{ valkey_app_rules }}"
+      - user: "{{ valkey_immich_user }}"
+        password: "{{ valkey_immich_password }}"
+        rules: "{{ valkey_app_rules }}"
+      - user: "{{ valkey_paperless_user }}"
+        password: "{{ valkey_paperless_password }}"
+        rules: "{{ valkey_app_rules }}"
+      - user: "{{ valkey_litellm_user }}"
+        password: "{{ valkey_litellm_password }}"
+        rules: "{{ valkey_app_rules }}"
+      # Prometheus redis_exporter: read-only plus the introspection
+      # subcommands it scrapes (INFO/CONFIG/CLIENT/LATENCY/SLOWLOG/MEMORY are
+      # in @dangerous, hence re-granted after the denial).
+      - user: "{{ valkey_exporter_user }}"
+        password: "{{ valkey_exporter_password }}"
+        rules:
+          - "~*"
+          - "&*"
+          - "+@read"
+          - "+@connection"
+          - "-@admin"
+          - "-@dangerous"
+          - "+ping"
+          - "+info"
+          - "+config|get"
+          - "+client|list"
+          - "+client|info"
+          - "+latency|history"
+          - "+latency|latest"
+          - "+latency|histogram"
+          - "+slowlog|get"
+          - "+memory|usage"
+          - "+memory|stats"
+          - "+cluster|info"
+
   tasks:
     - name: Install database packages
       ansible.builtin.apt:
@@ -78,6 +141,16 @@
         name: valkey-server
         enabled: true
         state: started
+
+    # PostgreSQL, MariaDB and Valkey are bound to all interfaces below and rely
+    # on UFW to limit them to the Docker bridge network. Refuse to continue if
+    # UFW isn't actually filtering - enabling it here could lock out SSH or
+    # other host services, so that stays a manual decision.
+    - name: Check that UFW is active (the database ports rely on it)
+      ansible.builtin.command: ufw status
+      register: ufw_status
+      changed_when: false
+      failed_when: "'Status: active' not in ufw_status.stdout"
 
     - name: Check for /etc/mysql/mariadb.cnf
       ansible.builtin.stat:
@@ -222,7 +295,7 @@
       community.postgresql.postgresql_user:
         name: "{{ postgres_user }}"
         password: "{{ postgres_password }}"
-        role_attr_flags: CREATEDB,SUPERUSER
+        role_attr_flags: CREATEDB,NOSUPERUSER
         state: present
       become_user: postgres
       vars:
@@ -282,19 +355,26 @@
         state: present
       become_user: postgres
 
-    - name: Ensure PostgreSQL user exists for Immich
+    - name: Ensure PostgreSQL app users exist
       community.postgresql.postgresql_user:
-        name: "{{ immich_user }}"
-        password: "{{ immich_password }}"
+        name: "{{ item.user }}"
+        password: "{{ item.password }}"
         state: present
       become_user: postgres
+      loop: "{{ postgres_app_databases }}"
+      loop_control:
+        label: "{{ item.name }}"
+      no_log: true
 
-    - name: Ensure PostgreSQL database exists for Immich
+    - name: Ensure PostgreSQL app databases exist
       community.postgresql.postgresql_db:
-        name: "{{ immich_db }}"
-        owner: "{{ immich_user }}"
+        name: "{{ item.db }}"
+        owner: "{{ item.user }}"
         state: present
       become_user: postgres
+      loop: "{{ postgres_app_databases }}"
+      loop_control:
+        label: "{{ item.name }}"
 
     # Immich needs VectorChord (vchord, superuser-only) for embeddings and
     # earthdistance (which cascades in its cube dependency) for geo search -
@@ -316,87 +396,19 @@
         state: present
       become_user: postgres
 
-    - name: Ensure PostgreSQL user exists for Mealie
+    - name: Ensure PostgreSQL backup user exists
       community.postgresql.postgresql_user:
-        name: "{{ mealie_user }}"
-        password: "{{ mealie_password }}"
+        name: "{{ postgres_backup_user }}"
+        password: "{{ postgres_backup_password }}"
         state: present
       become_user: postgres
 
-    - name: Ensure PostgreSQL database exists for Mealie
-      community.postgresql.postgresql_db:
-        name: "{{ mealie_db }}"
-        owner: "{{ mealie_user }}"
-        state: present
-      become_user: postgres
-
-    - name: Ensure PostgreSQL user exists for Paperless-ngx
-      community.postgresql.postgresql_user:
-        name: "{{ paperless_user }}"
-        password: "{{ paperless_password }}"
-        state: present
-      become_user: postgres
-
-    - name: Ensure PostgreSQL database exists for Paperless-ngx
-      community.postgresql.postgresql_db:
-        name: "{{ paperless_db }}"
-        owner: "{{ paperless_user }}"
-        state: present
-      become_user: postgres
-
-    - name: Ensure PostgreSQL user exists for LiteLLM
-      community.postgresql.postgresql_user:
-        name: "{{ litellm_user }}"
-        password: "{{ litellm_password }}"
-        state: present
-      become_user: postgres
-
-    - name: Ensure PostgreSQL database exists for LiteLLM
-      community.postgresql.postgresql_db:
-        name: "{{ litellm_db }}"
-        owner: "{{ litellm_user }}"
-        state: present
-      become_user: postgres
-
-    - name: Ensure PostgreSQL user exists for Seerr
-      community.postgresql.postgresql_user:
-        name: "{{ seerr_user }}"
-        password: "{{ seerr_password }}"
-        state: present
-      become_user: postgres
-
-    - name: Ensure PostgreSQL database exists for Seerr
-      community.postgresql.postgresql_db:
-        name: "{{ seerr_db }}"
-        owner: "{{ seerr_user }}"
-        state: present
-      become_user: postgres
-
-    - name: Ensure PostgreSQL user exists for Pocket ID
-      community.postgresql.postgresql_user:
-        name: "{{ pocketid_user }}"
-        password: "{{ pocketid_password }}"
-        state: present
-      become_user: postgres
-
-    - name: Ensure PostgreSQL database exists for Pocket ID
-      community.postgresql.postgresql_db:
-        name: "{{ pocketid_db }}"
-        owner: "{{ pocketid_user }}"
-        state: present
-      become_user: postgres
-
-    - name: Ensure PostgreSQL user exists for tinyauth
-      community.postgresql.postgresql_user:
-        name: "{{ tinyauth_user }}"
-        password: "{{ tinyauth_password }}"
-        state: present
-      become_user: postgres
-
-    - name: Ensure PostgreSQL database exists for tinyauth
-      community.postgresql.postgresql_db:
-        name: "{{ tinyauth_db }}"
-        owner: "{{ tinyauth_user }}"
+    # Read-only, enough for pg_dump of every database and pg_dumpall
+    # --globals-only --no-role-passwords (../backup-postgres.sh).
+    - name: Grant pg_read_all_data to the PostgreSQL backup user
+      community.postgresql.postgresql_membership:
+        group: pg_read_all_data
+        target_role: "{{ postgres_backup_user }}"
         state: present
       become_user: postgres
 
@@ -456,6 +468,63 @@
         login_password: "{{ mariadb_root_password }}"
         login_unix_socket: /run/mysqld/mysqld.sock
 
+    - name: Ensure MariaDB database exists for Uptime Kuma
+      community.mysql.mysql_db:
+        name: "{{ uptime_kuma_db_name }}"
+        encoding: utf8mb4
+        collation: utf8mb4_general_ci
+        state: present
+        login_user: root
+        login_password: "{{ mariadb_root_password }}"
+        login_unix_socket: /run/mysqld/mysqld.sock
+
+    - name: Ensure MariaDB user exists for Uptime Kuma
+      community.mysql.mysql_user:
+        name: "{{ uptime_kuma_db_user }}"
+        password: "{{ uptime_kuma_db_password }}"
+        host: "%"
+        priv: "{{ uptime_kuma_db_name }}.*:ALL"
+        state: present
+        login_user: root
+        login_password: "{{ mariadb_root_password }}"
+        login_unix_socket: /run/mysqld/mysqld.sock
+
+    # Read-only, enough for mysqldump --single-transaction --routines --events
+    # --triggers of every database (../backup-mariadb.sh). Socket-only.
+    - name: Ensure MariaDB backup user exists
+      community.mysql.mysql_user:
+        name: "{{ mariadb_backup_user }}"
+        password: "{{ mariadb_backup_password }}"
+        host: localhost
+        priv:
+          "*.*": "SELECT,SHOW VIEW,TRIGGER,LOCK TABLES,EVENT"
+        state: present
+        login_user: root
+        login_password: "{{ mariadb_root_password }}"
+        login_unix_socket: /run/mysqld/mysqld.sock
+
+    - name: Write backup.env for the nightly backup scripts
+      ansible.builtin.copy:
+        dest: "{{ backup_env_file }}"
+        owner: oskar
+        group: oskar
+        mode: "0600"
+        content: |
+          # Managed by ansible/local-databases.yml - edit vars/local-databases.yml instead.
+          POSTGRES_HOST=localhost
+          POSTGRES_PORT=5432
+          POSTGRES_USER={{ postgres_backup_user }}
+          POSTGRES_PASSWORD={{ postgres_backup_password }}
+
+          MARIADB_HOST=localhost
+          MARIADB_PORT=3306
+          MARIADB_USER={{ mariadb_backup_user }}
+          MARIADB_PASSWORD={{ mariadb_backup_password }}
+
+          BACKUP_ROOT={{ backup_root }}
+          BACKUP_PUSHGATEWAY_URL={{ backup_pushgateway_url }}
+      no_log: true
+
     - name: Configure Uptime Kuma database connection
       ansible.builtin.copy:
         dest: "{{ uptime_kuma_env_file }}"
@@ -480,23 +549,7 @@
     # ACL SETUSER still goes through because auth isn't required yet.
     - name: Ensure the Valkey default user's password matches requirepass
       ansible.builtin.command:
-        argv:
-          - valkey-cli
-          - --no-auth-warning
-          - -a
-          - "{{ valkey_root_password }}"
-          - -h
-          - "{{ valkey_host }}"
-          - -p
-          - "{{ valkey_port | string }}"
-          - ACL
-          - SETUSER
-          - default
-          - "on"
-          - ">{{ valkey_root_password }}"
-          - "~*"
-          - "&*"
-          - "+@all"
+        argv: "{{ valkey_cli + ['ACL', 'SETUSER', 'default', 'on', '>' ~ valkey_root_password, '~*', '&*', '+@all'] }}"
       register: valkey_acl_default
       changed_when: true
       failed_when: "'ERR' in valkey_acl_default.stdout"
@@ -504,180 +557,21 @@
 
     # Valkey ACL has no per-database restriction - a `db=N` SETUSER modifier is a
     # syntax error, not a scoping rule. The actual db isolation for these users
-    # comes from Immich/SearXNG selecting their own db index after connecting.
-    # valkey-cli also exits 0 even when the server replies with an error, so this
-    # is registered and explicitly checked rather than trusting changed_when alone.
-    - name: Ensure Valkey ACL user exists for SearXNG
+    # comes from each app selecting its own db index after connecting.
+    # valkey-cli exits 0 even when the server replies with an error, and stderr
+    # can carry a benign "AUTH failed" diagnostic, so only stdout is checked.
+    - name: Ensure Valkey ACL users exist
       ansible.builtin.command:
-        argv:
-          - valkey-cli
-          - --no-auth-warning
-          - -a
-          - "{{ valkey_root_password }}"
-          - -h
-          - "{{ valkey_host }}"
-          - -p
-          - "{{ valkey_port | string }}"
-          - ACL
-          - SETUSER
-          - "{{ valkey_searxng_user }}"
-          - "on"
-          - ">{{ valkey_searxng_password }}"
-          - "~*"
-          - "&*"
-          - "+@all"
-          - "-@admin"
-          - "-@dangerous"
-      register: valkey_acl_searxng
+        argv: "{{ valkey_cli + ['ACL', 'SETUSER', item.user, 'on', '>' ~ item.password] + item.rules }}"
+      loop: "{{ valkey_acl_users }}"
+      register: valkey_acl_user
       changed_when: true
-      # stderr can contain a benign "AUTH failed: ERR ..." diagnostic from valkey-cli
-      # itself when the default user currently has no password set - only stdout
-      # carries the actual ACL SETUSER reply, so only check that for a real error.
-      failed_when: "'ERR' in valkey_acl_searxng.stdout"
-      no_log: true
-
-    - name: Ensure Valkey ACL user exists for Immich
-      ansible.builtin.command:
-        argv:
-          - valkey-cli
-          - --no-auth-warning
-          - -a
-          - "{{ valkey_root_password }}"
-          - -h
-          - "{{ valkey_host }}"
-          - -p
-          - "{{ valkey_port | string }}"
-          - ACL
-          - SETUSER
-          - "{{ valkey_immich_user }}"
-          - "on"
-          - ">{{ valkey_immich_password }}"
-          - "~*"
-          # Key access (~) and pub/sub channel access (&) are separate grants in
-          # Valkey ACLs - Immich's microservices worker uses Redis pub/sub for
-          # BullMQ job events and fails with NOPERM without &* too.
-          - "&*"
-          - "+@all"
-          - "-@admin"
-          - "-@dangerous"
-          # ioredis (Immich's Redis client) runs INFO as part of its startup ready
-          # check; -@dangerous strips it like it does for the exporter user above,
-          # so it needs the same explicit re-grant after the category denials.
-          - "+info"
-      register: valkey_acl_immich
-      changed_when: true
-      failed_when: "'ERR' in valkey_acl_immich.stdout"
-      no_log: true
-
-    - name: Ensure Valkey ACL user exists for Paperless-ngx
-      ansible.builtin.command:
-        argv:
-          - valkey-cli
-          - --no-auth-warning
-          - -a
-          - "{{ valkey_root_password }}"
-          - -h
-          - "{{ valkey_host }}"
-          - -p
-          - "{{ valkey_port | string }}"
-          - ACL
-          - SETUSER
-          - "{{ valkey_paperless_user }}"
-          - "on"
-          - ">{{ valkey_paperless_password }}"
-          - "~*"
-          - "&*"
-          - "+@all"
-          - "-@admin"
-          - "-@dangerous"
-          - "+info"
-      register: valkey_acl_paperless
-      changed_when: true
-      failed_when: "'ERR' in valkey_acl_paperless.stdout"
-      no_log: true
-
-    - name: Ensure Valkey ACL user exists for LiteLLM
-      ansible.builtin.command:
-        argv:
-          - valkey-cli
-          - --no-auth-warning
-          - -a
-          - "{{ valkey_root_password }}"
-          - -h
-          - "{{ valkey_host }}"
-          - -p
-          - "{{ valkey_port | string }}"
-          - ACL
-          - SETUSER
-          - "{{ valkey_litellm_user }}"
-          - "on"
-          - ">{{ valkey_litellm_password }}"
-          - "~*"
-          - "&*"
-          - "+@all"
-          - "-@admin"
-          - "-@dangerous"
-          - "+info"
-      register: valkey_acl_litellm
-      changed_when: true
-      failed_when: "'ERR' in valkey_acl_litellm.stdout"
-      no_log: true
-
-    - name: Ensure Valkey ACL user exists for the Prometheus exporter
-      ansible.builtin.command:
-        argv:
-          - valkey-cli
-          - --no-auth-warning
-          - -a
-          - "{{ valkey_root_password }}"
-          - -h
-          - "{{ valkey_host }}"
-          - -p
-          - "{{ valkey_port | string }}"
-          - ACL
-          - SETUSER
-          - "{{ valkey_exporter_user }}"
-          - "on"
-          - ">{{ valkey_exporter_password }}"
-          - "~*"
-          - "&*"
-          - "+@read"
-          - "+@connection"
-          - "-@admin"
-          - "-@dangerous"
-          # ACL rules apply in order, so these specific grants must come after the
-          # category denials above - otherwise -@dangerous silently revokes them
-          # (INFO/CONFIG/CLIENT/LATENCY/SLOWLOG/MEMORY subcommands are in @dangerous).
-          - "+ping"
-          - "+info"
-          - "+config|get"
-          - "+client|list"
-          - "+client|info"
-          - "+latency|history"
-          - "+latency|latest"
-          - "+latency|histogram"
-          - "+slowlog|get"
-          - "+memory|usage"
-          - "+memory|stats"
-          - "+cluster|info"
-      register: valkey_acl_exporter
-      changed_when: true
-      failed_when: "'ERR' in valkey_acl_exporter.stdout"
+      failed_when: "'ERR' in valkey_acl_user.stdout"
       no_log: true
 
     - name: Persist the Valkey ACL to disk if an ACL file is configured
       ansible.builtin.command:
-        argv:
-          - valkey-cli
-          - --no-auth-warning
-          - -a
-          - "{{ valkey_root_password }}"
-          - -h
-          - "{{ valkey_host }}"
-          - -p
-          - "{{ valkey_port | string }}"
-          - ACL
-          - SAVE
+        argv: "{{ valkey_cli + ['ACL', 'SAVE'] }}"
       register: valkey_acl_save
       changed_when: false
       failed_when: false
@@ -723,34 +617,21 @@
           REDIS_USER={{ valkey_exporter_user }}
           REDIS_PASSWORD={{ valkey_exporter_password }}
 
-    - name: Show database connection info
+    # Passwords stay in vars/local-databases.yml - never printed here.
+    - name: Show where to put the database credentials
       ansible.builtin.debug:
         msg:
-          - "PostgreSQL: postgresql://{{ postgres_user }}:{{ postgres_password }}@localhost:5432/{{ postgres_db }}"
-          - "PostgreSQL (Oskar/pgAdmin): postgresql://{{ postgres_admin_user }}:{{ postgres_admin_password }}@localhost:5432/{{ postgres_db }}"
-          - "PostgreSQL (Grafana): postgresql://{{ postgres_grafana_user }}:{{ postgres_grafana_password }}@localhost:5432/{{ postgres_db }}"
-          - "MariaDB: mysql://{{ mariadb_user }}:{{ mariadb_password }}@localhost:3306/{{ mariadb_database }}"
-          - "MariaDB (Grafana): mysql://{{ mariadb_grafana_user }}:{{ mariadb_grafana_password }}@localhost:3306/mysql"
-          - "Valkey (searxng): valkey://{{ valkey_searxng_user }}:{{ valkey_searxng_password }}@{{ valkey_host }}:{{ valkey_port }}/{{ valkey_searxng_db }}"
-          - "PostgreSQL (Immich): postgresql://{{ immich_user }}:{{ immich_password }}@localhost:5432/{{ immich_db }}"
-          - "Valkey (Immich): valkey://{{ valkey_immich_user }}:{{ valkey_immich_password }}@{{ valkey_host }}:{{ valkey_port }}/{{ valkey_immich_db }}"
-          - "PostgreSQL (Mealie): postgresql://{{ mealie_user }}:{{ mealie_password }}@localhost:5432/{{ mealie_db }}"
-          - "PostgreSQL (Paperless-ngx): postgresql://{{ paperless_user }}:{{ paperless_password }}@localhost:5432/{{ paperless_db }}"
-          - "Valkey (Paperless-ngx): valkey://{{ valkey_paperless_user }}:{{ valkey_paperless_password }}@{{ valkey_host }}:{{ valkey_port }}/{{ valkey_paperless_db }}"
-          - "PostgreSQL (LiteLLM): postgresql://{{ litellm_user }}:{{ litellm_password }}@localhost:5432/{{ litellm_db }}"
-          - "Valkey (LiteLLM): valkey://{{ valkey_litellm_user }}:{{ valkey_litellm_password }}@{{ valkey_host }}:{{ valkey_port }}/{{ valkey_litellm_db }}"
-          - "PostgreSQL (Seerr): postgresql://{{ seerr_user }}:{{ seerr_password }}@localhost:5432/{{ seerr_db }}"
-          - "PostgreSQL (Pocket ID): postgresql://{{ pocketid_user }}:{{ pocketid_password }}@localhost:5432/{{ pocketid_db }}"
-          - "PostgreSQL (tinyauth): postgresql://{{ tinyauth_user }}:{{ tinyauth_password }}@localhost:5432/{{ tinyauth_db }}"
-          - "Put the Grafana lines above into server-observability/terraform.tfvars as postgres_grafana_user/password and mariadb_grafana_user/password."
-          - "Put the Immich lines above into media-services/immich.env as DB_HOSTNAME=host.docker.internal/DB_USERNAME/DB_PASSWORD/DB_DATABASE_NAME and REDIS_HOSTNAME=host.docker.internal/REDIS_USERNAME/REDIS_PASSWORD/REDIS_DBINDEX."
-          - "Put the Mealie line above into media-services/mealie.env as POSTGRES_SERVER=host.docker.internal/POSTGRES_USER/POSTGRES_PASSWORD/POSTGRES_DB."
-          - "Put the Paperless-ngx lines above into media-services/paperless.env as PAPERLESS_DBHOST=host.docker.internal/PAPERLESS_DBUSER/PAPERLESS_DBPASS/PAPERLESS_DBNAME and PAPERLESS_REDIS=redis://<user>:<password>@host.docker.internal:6379/<db>."
-          - "Put the LiteLLM lines above into home-server-tools/ai/litellm.env as DATABASE_URL=postgresql://<user>:<password>@host.docker.internal:5432/<db> and REDIS_HOST=host.docker.internal/REDIS_PORT=6379/REDIS_PASSWORD/REDIS_DB."
-          - "Put the Seerr line above into media-services/seerr.env as DB_TYPE=postgres, DB_HOST=host.docker.internal, DB_USER, DB_PASS, DB_NAME."
-          - "Put the Pocket ID line above into home-server-tools/auth/.env as DB_CONNECTION_STRING=postgresql://<user>:<password>@host.docker.internal:5432/<db>?sslmode=disable."
-          - "Put the tinyauth line above into home-server-tools/auth/.env as TINYAUTH_DATABASE_DRIVER=postgres and TINYAUTH_DATABASE_PATH=postgresql://<user>:<password>@host.docker.internal:5432/<db>?sslmode=disable."
-          - "The Oskar/pgAdmin user's password is entered by hand at first pgAdmin login (see home-server-tools/pgadmin/README.md) - it isn't written to any .env file."
+          - "Grafana (server-observability/terraform.tfvars): postgres_grafana_user/password and mariadb_grafana_user/password from vars/local-databases.yml."
+          - "Immich (media-services/immich.env): DB_HOSTNAME=host.docker.internal, DB_USERNAME/DB_PASSWORD/DB_DATABASE_NAME = immich_user/immich_password/immich_db; REDIS_HOSTNAME=host.docker.internal, REDIS_USERNAME/REDIS_PASSWORD/REDIS_DBINDEX = valkey_immich_user/valkey_immich_password/valkey_immich_db."
+          - "Mealie (media-services/mealie.env): POSTGRES_SERVER=host.docker.internal, POSTGRES_USER/POSTGRES_PASSWORD/POSTGRES_DB = mealie_user/mealie_password/mealie_db."
+          - "Paperless-ngx (media-services/paperless.env): PAPERLESS_DBHOST=host.docker.internal, PAPERLESS_DBUSER/PAPERLESS_DBPASS/PAPERLESS_DBNAME = paperless_*; PAPERLESS_REDIS=redis://<valkey_paperless_user>:<valkey_paperless_password>@host.docker.internal:6379/<valkey_paperless_db>."
+          - "LiteLLM (home-server-tools/ai/litellm.env): DATABASE_URL=postgresql://<litellm_user>:<litellm_password>@host.docker.internal:5432/<litellm_db>; REDIS_HOST=host.docker.internal, REDIS_PORT=6379, REDIS_USERNAME/REDIS_PASSWORD/REDIS_DB = valkey_litellm_*."
+          - "Seerr (media-services/seerr.env): DB_TYPE=postgres, DB_HOST=host.docker.internal, DB_USER/DB_PASS/DB_NAME = seerr_user/seerr_password/seerr_db."
+          - "SearXNG (home-server-tools/ai/searxng.env): SEARXNG_VALKEY_URL=valkey://<valkey_searxng_user>:<valkey_searxng_password>@host.docker.internal:6379/<valkey_searxng_db>."
+          - "Pocket ID (home-server-tools/auth/.env): DB_CONNECTION_STRING=postgresql://<pocketid_user>:<pocketid_password>@host.docker.internal:5432/<pocketid_db>?sslmode=disable."
+          - "tinyauth (home-server-tools/auth/.env): TINYAUTH_DATABASE_DRIVER=postgres, TINYAUTH_DATABASE_PATH=postgresql://<tinyauth_user>:<tinyauth_password>@host.docker.internal:5432/<tinyauth_db>?sslmode=disable."
+          - "pgAdmin: the postgres_admin_user password is entered by hand at first login (home-server-tools/pgadmin/README.md)."
+          - "Backups: {{ backup_env_file }} was written for ../backup-postgres.sh and ../backup-mariadb.sh."
 
   handlers:
     - name: Reload systemd daemon

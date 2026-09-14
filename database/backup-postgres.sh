@@ -1,86 +1,46 @@
 #!/usr/bin/env bash
 #
-# Timestamped backup of the host-installed PostgreSQL database provisioned by
-# ansible/local-databases.yml.
+# Nightly backup of every database on the host-installed PostgreSQL instance
+# provisioned by ansible/local-databases.yml (Immich, Paperless-ngx, Mealie,
+# Seerr, LiteLLM, Pocket ID, tinyauth, ...).
 #
 # Usage:
 #   cd database && ./backup-postgres.sh
 #   (or: make backup-postgres)
 #
-# Reads connection details from backup.env (gitignored - copy backup.env.example
-# and fill in the real app credentials). Writes timestamped dumps into
-# $BACKUP_ROOT/postgres/<timestamp>/ (BACKUP_ROOT in backup.env, defaults to
-# ./backups next to this script) and keeps only the most recent 7 timestamped runs.
+# Connects as the read-only backup role (pg_read_all_data) from backup.env,
+# which ansible/local-databases.yml writes. Each run produces
+# $BACKUP_ROOT/postgres/<timestamp>/ containing:
+#   globals.sql   roles and tablespaces (without passwords)
+#   <db>.dump     one custom-format (compressed) dump per database
+# and keeps the most recent 7 runs. See backup-lib.sh for atomicity/alerting.
 #
-# Restore:
-#   PGPASSWORD=... psql -h <host> -p <port> -U <user> -d <db> < $BACKUP_ROOT/postgres/<ts>/postgres.sql
-#
-# Alerting: on success, pushes backup_last_success_timestamp_seconds and
-# backup_duration_seconds (labeled database="postgres") to the Prometheus
-# Pushgateway (BACKUP_PUSHGATEWAY_URL in backup.env, defaults to
-# http://localhost:9092). The DatabaseBackupStale rule in
-# server-observability/prometheus-rules/database-alerts.yaml fires if no
-# successful push has landed in over 26h - covering both "the dump failed"
-# and "the cron job stopped running entirely" in one check, since a failed
-# run never reaches the push at all.
+# Restore one database (as a superuser, e.g. postgres):
+#   psql -d postgres -f <ts>/globals.sql            # only if roles are missing
+#   createdb -O <owner> <db>
+#   pg_restore -d <db> --no-owner --role=<owner> <ts>/<db>.dump
 
-set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/backup-lib.sh"
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+load_backup_env
+require_cmds pg_dump pg_dumpall psql curl
+require_vars POSTGRES_USER POSTGRES_PASSWORD
 
-ENV_FILE="$SCRIPT_DIR/backup.env"
-if [[ ! -f "$ENV_FILE" ]]; then
-  echo "Missing $ENV_FILE - copy backup.env.example to backup.env and fill in credentials." >&2
-  exit 1
-fi
-# shellcheck disable=SC1090
-set -a
-source "$ENV_FILE"
-set +a
+export PGHOST="${POSTGRES_HOST:-localhost}"
+export PGPORT="${POSTGRES_PORT:-5432}"
+export PGUSER="$POSTGRES_USER"
+export PGPASSWORD="$POSTGRES_PASSWORD"
 
-PUSHGATEWAY_URL="${BACKUP_PUSHGATEWAY_URL:-http://localhost:9092}"
-START_TIME="$(date +%s)"
+mapfile -t DATABASES < <(psql -XAt -d postgres \
+  -c "SELECT datname FROM pg_database WHERE datallowconn AND NOT datistemplate ORDER BY 1")
+[[ ${#DATABASES[@]} -gt 0 ]] || die "Could not list PostgreSQL databases as $PGUSER@$PGHOST:$PGPORT"
 
-if ! command -v pg_dump >/dev/null 2>&1; then
-  echo "pg_dump not found - is the postgresql-client package installed?" >&2
-  exit 1
-fi
-if [[ -z "${POSTGRES_USER:-}" ]]; then
-  echo "POSTGRES_USER not set in $ENV_FILE" >&2
-  exit 1
-fi
+begin_backup postgres
 
-TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
-BACKUP_ROOT="${BACKUP_ROOT:-$SCRIPT_DIR/backups}/postgres"
-OUT_DIR="$BACKUP_ROOT/$TIMESTAMP"
-mkdir -p "$OUT_DIR"
-
-echo "==> Backing up PostgreSQL ($POSTGRES_DB) to $OUT_DIR"
-PGPASSWORD="$POSTGRES_PASSWORD" pg_dump \
-  -h "${POSTGRES_HOST:-localhost}" \
-  -p "${POSTGRES_PORT:-5432}" \
-  -U "$POSTGRES_USER" \
-  -d "$POSTGRES_DB" \
-  -F p \
-  -f "$OUT_DIR/postgres.sql"
-
-echo "==> Pruning old PostgreSQL backups (keeping last 7)"
-mapfile -t OLD_BACKUPS < <(ls -1dt "$BACKUP_ROOT"/*/ 2>/dev/null | tail -n +8)
-for old in "${OLD_BACKUPS[@]:-}"; do
-  [[ -n "$old" ]] || continue
-  echo "    removing $old"
-  rm -rf "$old"
+pg_dumpall --globals-only --no-role-passwords -f "$WORK_DIR/globals.sql"
+for db in "${DATABASES[@]}"; do
+  echo "    $db"
+  pg_dump -d "$db" -F c -f "$WORK_DIR/$db.dump"
 done
 
-echo "==> Done: $OUT_DIR"
-
-END_TIME="$(date +%s)"
-cat <<EOF | curl -fsS --max-time 10 --data-binary @- \
-  "$PUSHGATEWAY_URL/metrics/job/database_backup/database/postgres" \
-  || echo "    (failed to push metrics to $PUSHGATEWAY_URL)" >&2
-# TYPE backup_last_success_timestamp_seconds gauge
-backup_last_success_timestamp_seconds $END_TIME
-# TYPE backup_duration_seconds gauge
-backup_duration_seconds $((END_TIME - START_TIME))
-EOF
+finish_backup postgres

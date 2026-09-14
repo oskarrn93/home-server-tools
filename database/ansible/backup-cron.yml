@@ -12,9 +12,9 @@
 #   cd /home/oskar/github/home-server-tools/database/ansible
 #   ansible-playbook -i inventory.ini backup-cron.yml --ask-become-pass
 #
-# Prerequisite: database/backup.env must already exist (copy backup.env.example
-# and fill in the real app credentials) - this playbook only schedules the
-# scripts, it doesn't configure their credentials.
+# Prerequisite: database/backup.env must already exist - local-databases.yml
+# writes it (backup users/passwords from vars/local-databases.yml). This
+# playbook only schedules the scripts.
 - name: Schedule the database backup scripts via cron
   hosts: localhost
   become: true
@@ -56,6 +56,5 @@
         msg: >-
           Cron jobs installed for {{ backup_user }}: postgres at 03:00,
           mariadb at 03:10 (staggered so they don't contend for I/O at the
-          same instant). Make sure database/backup.env exists (copy
-          backup.env.example and fill in real credentials) - both scripts
-          exit immediately if it's missing.
+          same instant). Make sure database/backup.env exists (written by
+          local-databases.yml) - both scripts exit immediately if it's missing.

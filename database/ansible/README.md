@@ -3,19 +3,15 @@
 Installs and configures PostgreSQL, MariaDB, and Valkey directly on this host, and wires up
 monitoring for them in the sibling `server-observability` repo.
 
-This directory also has:
-
-- `host-tuning.yml`, a small playbook for miscellaneous host-level kernel/sysctl tuning
-  unrelated to the databases (see below).
-- `backup-cron.yml`, which schedules `../backup-postgres.sh` and `../backup-mariadb.sh` via
-  cron - see `../README.md`'s "Backups" section.
+This directory also has `backup-cron.yml`, which schedules `../backup-postgres.sh` and `../backup-mariadb.sh` via
+cron - see `../README.md`'s "Backups" section. (Host kernel tuning moved to `../../host/`.)
 
 ## Prerequisites
 
 ```bash
 sudo apt-get update
 sudo apt-get install -y ansible
-ansible-galaxy collection install community.postgresql community.mysql community.general ansible.posix
+ansible-galaxy collection install community.postgresql community.mysql community.general
 ```
 
 ## Run it
@@ -48,29 +44,35 @@ an agent without a TTY), since `--ask-become-pass` needs a password typed at the
 - Opens PostgreSQL (5432), MariaDB (3306), and Valkey (6379) to the Docker bridge network
   (`docker_network` in `vars/local-databases.yml`) via bind-address/listen_addresses changes and
   UFW rules, so containers in `server-observability` can reach them at the Docker gateway IP
-  (`docker_gateway_ip`, `172.17.0.1`).
-- Creates the app database/user for PostgreSQL and MariaDB, and sets root passwords.
-- Creates a dedicated PostgreSQL database/user for Immich (`immich_db`/`immich_user`), with the
-  `vchord` and `earthdistance` extensions enabled in that database, and a Valkey ACL user for
-  Immich (`valkey_immich_user`) that the app selects its own db index into (`valkey_immich_db`) -
-  Valkey ACL has no per-database restriction, so this isolation is by convention, not enforcement.
-- Creates a dedicated PostgreSQL database/user for Mealie (`mealie_db`/`mealie_user`) - no extra
-  extensions needed, unlike Immich.
+  (`docker_gateway_ip`, `172.17.0.1`). The servers listen on all interfaces, so the playbook
+  refuses to run unless `ufw status` reports active - it deliberately doesn't enable UFW itself,
+  since that could cut off SSH or other host services.
+- Creates the generic `app` database/user for PostgreSQL (`CREATEDB`, not superuser) and
+  MariaDB, and sets root passwords.
+- Creates one PostgreSQL database + owner role per app (`postgres_app_databases` in the playbook:
+  Immich, Mealie, Paperless-ngx, LiteLLM, Seerr, Pocket ID, tinyauth), with the `vchord` and
+  `earthdistance` extensions enabled in Immich's database.
+- Creates Uptime Kuma's MariaDB database/user (`uptime_kuma_db_*`, formerly a separate Terraform
+  stack) and writes `uptime-kuma.env` into `server-observability`.
+- Creates Valkey ACL users (`valkey_acl_users`: SearXNG, Immich, Paperless-ngx, LiteLLM, and the
+  Prometheus exporter) that each app selects its own db index into - Valkey ACL has no
+  per-database restriction, so that isolation is by convention, not enforcement.
+- Creates read-only `backup` users (PostgreSQL `pg_read_all_data`; MariaDB
+  `SELECT,SHOW VIEW,TRIGGER,LOCK TABLES,EVENT`, socket-only) and writes `../backup.env` (0600)
+  for the nightly backup scripts.
 - Creates read-only monitoring users for Prometheus (`postgres_exporter`, `mysqld_exporter`,
   a Valkey ACL user) and `grafana` users (Postgres: `pg_read_all_data`; MariaDB: global `SELECT`)
   used by the dashboards/data sources in `server-observability`.
 - Creates a personal PostgreSQL superuser for Oskar (`postgres_admin_user`, default `oskar`) with
   `CREATEDB,SUPERUSER`, used to log into pgAdmin (`home-server-tools/pgadmin`) and see/administer
   every database on the instance.
-- Creates the Valkey ACL user for SearXNG (`searxng`, using db 1 the same way).
 - Configures a Valkey `aclfile` (`/etc/valkey/users.acl`) so ACL users created above survive a
   Valkey restart/reboot instead of only living in memory.
-- Writes `uptime-kuma.env` and the Prometheus exporter credential files
-  (`postgres-exporter.env`, `mysqld-exporter.my.cnf`, `redis-exporter.env`) directly into
-  `server-observability`.
-- Prints connection URLs at the end, including the Grafana credentials to paste into
-  `server-observability/terraform.tfvars` (`postgres_grafana_user`/`password`,
-  `mariadb_grafana_user`/`password`).
+- Writes the Prometheus exporter credential files (`postgres-exporter.env`,
+  `mysqld-exporter.my.cnf`, `redis-exporter.env`) directly into `server-observability`.
+- Ends by listing which `vars/local-databases.yml` variables go into which app's env file (e.g.
+  the Grafana credentials for `server-observability/terraform.tfvars`) - variable names only,
+  never the secret values.
 
 ## Config
 
@@ -87,30 +89,12 @@ terraform plan
 terraform apply
 ```
 
-## Host tuning (`host-tuning.yml`)
-
-Miscellaneous host kernel/sysctl tuning that isn't specific to the databases above. Currently:
-
-- Raises `fs.inotify.max_user_watches` (to 1048576) and `fs.inotify.max_user_instances` (to 512)
-  via `/etc/sysctl.d/99-inotify.conf`, applied immediately. The default watch limit (65536) is too
-  low for Immich's library watcher on large photo libraries, which otherwise logs repeated
-  `ENOSPC: System limit for number of file watchers reached` errors. This is a host kernel limit
-  shared with all containers (inotify isn't namespaced), so it's fixed here rather than in
-  `server-observability` or the Immich container config.
-
-Run it the same way as the database playbook:
-
-```bash
-cd /home/oskar/github/home-server-tools/database/ansible
-ansible-playbook host-tuning.yml --ask-become-pass
-```
-
 ## Backup scheduling (`backup-cron.yml`)
 
 Installs one cron job per database (`../backup-postgres.sh` at 03:00, `../backup-mariadb.sh` at
 03:10, staggered so they don't contend for I/O at the same instant) for the `oskar` user.
-Requires `../backup.env` to already exist (copy `../backup.env.example` and fill in the real app
-credentials) - this playbook only schedules the scripts, it doesn't configure their credentials.
+Requires `../backup.env` to already exist (written by `local-databases.yml`) - this playbook only
+schedules the scripts.
 Valkey has no backup job - see `../README.md`'s "Backups" section for why.
 
 Run it the same way as the database playbook:
