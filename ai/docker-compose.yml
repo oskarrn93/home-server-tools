@@ -56,7 +56,7 @@ services:
       - traefik_internal
 
   ollama-exporter:
-    image: ghcr.io/maravexa/ollama-exporter:v0.1.2
+    image: ghcr.io/maravexa/ollama-exporter:v0.3.1
     container_name: ollama-exporter
     restart: unless-stopped
     environment:
