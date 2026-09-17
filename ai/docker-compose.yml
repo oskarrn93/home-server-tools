@@ -66,7 +66,7 @@ services:
         condition: service_healthy
 
   searxng:
-    image: searxng/searxng:2026.9.15-ca4965040
+    image: searxng/searxng:2026.9.17-c49771992
     container_name: searxng
     restart: unless-stopped
     healthcheck:
@@ -143,7 +143,7 @@ services:
       - traefik_internal
 
   n8n:
-    image: n8nio/n8n:2.39.5
+    image: n8nio/n8n:2.39.7
     container_name: n8n
     restart: unless-stopped
     healthcheck:
