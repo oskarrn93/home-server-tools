@@ -20,7 +20,7 @@ services:
       - "127.0.0.1:11434:11434"
 
   litellm:
-    image: ghcr.io/berriai/litellm:v1.102.0
+    image: ghcr.io/berriai/litellm:v1.102.1
     container_name: litellm
     restart: unless-stopped
     depends_on:
@@ -66,7 +66,7 @@ services:
         condition: service_healthy
 
   searxng:
-    image: searxng/searxng:2026.9.18-fc028154a
+    image: searxng/searxng:2026.9.21-f372096fb
     container_name: searxng
     restart: unless-stopped
     healthcheck:
@@ -100,7 +100,7 @@ services:
       - traefik_internal
 
   openwebui:
-    image: openwebui/open-webui:0.11.3-slim
+    image: openwebui/open-webui:0.11.4-slim
     container_name: openwebui
     restart: unless-stopped
     env_file:
@@ -143,7 +143,7 @@ services:
       - traefik_internal
 
   n8n:
-    image: n8nio/n8n:2.39.8
+    image: n8nio/n8n:2.40.5
     container_name: n8n
     restart: unless-stopped
     healthcheck:
