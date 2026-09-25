@@ -1,6 +1,6 @@
 services:
   ollama:
-    image: ollama/ollama:0.34.2
+    image: ollama/ollama:0.34.3
     container_name: ollama
     restart: unless-stopped
     healthcheck:
@@ -66,7 +66,7 @@ services:
         condition: service_healthy
 
   searxng:
-    image: searxng/searxng:2026.9.21-f372096fb
+    image: searxng/searxng:2026.9.22-b3c389529
     container_name: searxng
     restart: unless-stopped
     healthcheck:
