@@ -27,3 +27,16 @@ the media apps in `media-services`.
   `.example` counterpart.
 - Services are exposed through Traefik only - no published host ports - and LAN-only routers list
   `lan-only@file` first. See `traefik/README.md` before adding a hostname.
+
+## Updating images
+
+Image tags are pinned and bumped by Dependabot PRs. After merging one, on the server:
+
+```bash
+git pull
+./update.sh          # all stacks, in dependency order
+./update.sh ai auth  # or only specific stacks
+```
+
+The script pulls, recreates only containers whose image changed, prunes old images, and lists any
+container that is not running or healthy.
