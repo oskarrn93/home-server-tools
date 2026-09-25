@@ -23,8 +23,8 @@ model_list:
       model: ollama/llava:7b
       api_base: http://ollama:11434
 
-  # Remote ollama host (desktop.oskarrosen.io, GPU box) - lightweight text model,
-  # used by n8n's Instance AI. Preferred deployment; falls back to local
+  # Remote ollama host (desktop.oskarrosen.io, GPU box) - lightweight text model.
+  # Preferred deployment; falls back to local
   # ollama (see litellm_settings.fallbacks below) if this host is
   # unreachable.
   - model_name: qwen2.5:3b-instruct

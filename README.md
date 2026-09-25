@@ -2,14 +2,14 @@
 
 Infrastructure-as-config for the home server (`192.168.1.12`): Docker Compose stacks behind a
 shared Traefik, host-installed databases managed by Ansible, and Terraform for app-level config
-(OIDC clients, n8n workflows, Ollama models). Each directory is deployed independently with
+(OIDC clients, Ollama models). Each directory is deployed independently with
 `docker compose up -d` from inside it.
 
 | Directory | What it is |
 |---|---|
 | [`traefik/`](traefik/README.md) | Reverse proxy, Let's Encrypt wildcard cert, fail2ban/rate-limit/`lan-only` middlewares, and the public vs LAN-only hostname list |
 | [`auth/`](auth/README.md) | Pocket ID (passkey OIDC provider) + tinyauth (forward-auth gate); `terraform/` manages the OIDC clients |
-| [`ai/`](ai/.claude/CLAUDE.md) | Ollama, LiteLLM, Open WebUI, SearXNG, n8n + sandbox; `terraform/` manages models and n8n workflows |
+| [`ai/`](ai/.claude/CLAUDE.md) | Ollama, LiteLLM, Open WebUI, SearXNG; `terraform/` manages models |
 | [`database/`](database/README.md) | Ansible for host PostgreSQL/MariaDB/Valkey and every app database; nightly backup scripts |
 | [`pgadmin/`](pgadmin/README.md) | pgAdmin for the host PostgreSQL, Pocket ID login |
 | `portainer/` | Portainer CE + agent |
