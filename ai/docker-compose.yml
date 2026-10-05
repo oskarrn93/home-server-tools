@@ -1,6 +1,6 @@
 services:
   ollama:
-    image: ollama/ollama:0.34.4
+    image: ollama/ollama:0.35.1
     container_name: ollama
     restart: unless-stopped
     healthcheck:
@@ -20,7 +20,7 @@ services:
       - "127.0.0.1:11434:11434"
 
   litellm:
-    image: ghcr.io/berriai/litellm:v1.103.0
+    image: ghcr.io/berriai/litellm:v1.104.0
     container_name: litellm
     restart: unless-stopped
     depends_on:
@@ -66,7 +66,7 @@ services:
         condition: service_healthy
 
   searxng:
-    image: searxng/searxng:2026.9.25-d8ae3abd5
+    image: searxng/searxng:2026.10.2-e652ca7d2
     container_name: searxng
     restart: unless-stopped
     healthcheck:
