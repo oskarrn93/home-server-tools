@@ -1,6 +1,6 @@
 services:
   ollama:
-    image: ollama/ollama:0.40.3
+    image: ollama/ollama:0.40.6
     container_name: ollama
     restart: unless-stopped
     healthcheck:
@@ -20,7 +20,7 @@ services:
       - "127.0.0.1:11434:11434"
 
   litellm:
-    image: ghcr.io/berriai/litellm:v1.105.0
+    image: ghcr.io/berriai/litellm:v1.106.2
     container_name: litellm
     restart: unless-stopped
     depends_on:
@@ -56,7 +56,7 @@ services:
       - traefik_internal
 
   ollama-exporter:
-    image: ghcr.io/maravexa/ollama-exporter:v0.3.1
+    image: ghcr.io/maravexa/ollama-exporter:v0.4.0
     container_name: ollama-exporter
     restart: unless-stopped
     environment:
@@ -66,7 +66,7 @@ services:
         condition: service_healthy
 
   searxng:
-    image: searxng/searxng:2026.10.9-f4822b3fc
+    image: searxng/searxng:2026.10.17-decdfa6f7
     container_name: searxng
     restart: unless-stopped
     healthcheck:
@@ -100,7 +100,7 @@ services:
       - traefik_internal
 
   openwebui:
-    image: openwebui/open-webui:0.12.0-slim
+    image: openwebui/open-webui:0.12.3-slim
     container_name: openwebui
     restart: unless-stopped
     env_file:
