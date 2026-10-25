@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 ANS_DIR := ansible
 
-.PHONY: ansible-setup ansible-check ansible-backup-cron backup-postgres backup-mariadb
+.PHONY: ansible-setup ansible-check ansible-backup-cron backup-postgres backup-mariadb valkey-repair-aof
 
 ansible-setup:
 	cd $(ANS_DIR) && ansible-galaxy collection install community.postgresql community.mysql community.general
@@ -19,3 +19,6 @@ backup-postgres:
 
 backup-mariadb:
 	./backup-mariadb.sh
+
+valkey-repair-aof:
+	./repair-valkey-aof.sh

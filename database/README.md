@@ -76,3 +76,19 @@ so the `DatabaseBackupStale` rule in `server-observability/prometheus-rules/data
   pg_restore -d <db> --no-owner --role=<owner> <ts>/<db>.dump
   ```
 - **MariaDB** (as root): `gunzip -c <ts>/<db>.sql.gz | sudo mysql`
+
+## Valkey won't start (corrupted AOF)
+
+After an unclean shutdown or power loss, `valkey-server.service` can fail with
+`Bad file format reading the append only file appendonly.aof.<n>.incr.aof` in
+`/var/log/valkey/valkey-server.log`. Repair it with:
+
+```bash
+cd /home/oskar/github/home-server-tools/database
+make valkey-repair-aof        # or ./repair-valkey-aof.sh -y to skip the confirmation
+```
+
+It backs up the AOF directory, truncates the corrupted incr file at the first broken entry (losing
+only writes after that point - cache/queue data, see above), and restarts Valkey. Don't follow the
+log's `valkey-check-aof --fix <manifest>` hint: valkey-check-aof 9.0.4 can't read Valkey's RDB base
+file, so manifest mode always fails.
