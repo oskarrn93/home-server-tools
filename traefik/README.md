@@ -40,9 +40,11 @@ Any router covering a path prefix of a public host (e.g. iptv-proxy-go's `/admin
 | `prowlarr.oskarrosen.io` | Prowlarr | `media-services` |
 | `nzbhydra2.oskarrosen.io` | NZBHydra2 | `media-services` |
 | `readarr.oskarrosen.io` | Readarr | `media-services` |
+| `shelfmark.oskarrosen.io` | Shelfmark | `media-services` |
 | `bazarr.oskarrosen.io` | Bazarr | `media-services` |
 | `calibre.oskarrosen.io` | Calibre (desktop) | `media-services` |
 | `calibre-content.oskarrosen.io` | Calibre (content server) | `media-services` |
+| `cwa.oskarrosen.io` | Calibre-Web Automated | `media-services` |
 | `tautulli.oskarrosen.io` | Tautulli | `media-services` |
 | `plex.oskarrosen.io` | Plex | `media-services` |
 | `dispatcharr.oskarrosen.io` | Dispatcharr | `media-services` |

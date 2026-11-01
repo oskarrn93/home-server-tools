@@ -81,6 +81,18 @@ locals {
       name         = "pgAdmin"
       callback_url = "https://pgadmin.oskarrosen.io/oauth2/authorize"
     }
+    calibre-web-automated = {
+      id           = "5b608320-5e44-49c1-a56f-f4fbf2b88359"
+      name         = "Calibre-Web Automated"
+      callback_url = "https://cwa.oskarrosen.io/login/generic/authorized"
+      # CWA's flask-dance OAuth client sends no code_challenge.
+      pkce = false
+    }
+    shelfmark = {
+      id           = "c2705eda-6626-4c6e-ac5d-17ead77c5044"
+      name         = "Shelfmark"
+      callback_url = "https://shelfmark.oskarrosen.io/api/auth/oidc/callback"
+    }
   }
 
   # Update DTO has no "id" field; only the create body needs it (and only when
