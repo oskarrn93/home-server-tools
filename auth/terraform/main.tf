@@ -93,6 +93,15 @@ locals {
       name         = "Shelfmark"
       callback_url = "https://shelfmark.oskarrosen.io/api/auth/oidc/callback"
     }
+    openbao = {
+      id   = "e363d2a9-794a-4eea-8b60-92d24c502234"
+      name = "OpenBao"
+      # The UI's callback, plus the local listener `bao login -method=oidc` starts.
+      callback_urls = [
+        "https://bao.oskarrosen.io/ui/vault/auth/oidc/oidc/callback",
+        "http://localhost:8250/oidc/callback",
+      ]
+    }
   }
 
   # Update DTO has no "id" field; only the create body needs it (and only when
@@ -100,7 +109,7 @@ locals {
   oidc_client_settings = {
     for key, client in local.oidc_clients : key => {
       name                        = client.name
-      callbackURLs                = [client.callback_url]
+      callbackURLs                = try(client.callback_urls, [client.callback_url])
       isPublic                    = false
       pkceEnabled                 = try(client.pkce, true)
       isGroupRestricted           = true
